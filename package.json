@@ -1,0 +1,30 @@
+{
+  "name": "rental-shop-backend",
+  "version": "1.0.0",
+  "description": "Backend API cho hệ thống Cho thuê & Bán đồ chuyên dụng",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "db:init": "node src/database/init.js",
+    "test": "jest --verbose"
+  },
+  "keywords": ["rental", "ecommerce", "sqlite"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.7.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.1",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.9"
+  }
+}

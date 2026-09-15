@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 min-h-screen antialiased;
+    /* Mesh gradient effect for a premium look */
+    background-color: #f8fafc;
+    background-image: 
+      radial-gradient(at 40% 20%, hsla(228,100%,74%,0.1) 0px, transparent 50%),
+      radial-gradient(at 80% 0%, hsla(189,100%,56%,0.1) 0px, transparent 50%),
+      radial-gradient(at 0% 50%, hsla(355,100%,93%,0.1) 0px, transparent 50%);
+    background-attachment: fixed;
+  }
+}
+
+.fade-enter {
+  opacity: 0;
+  transition: opacity 0.5s ease-in-out;
+}
+
+.fade-enter-active {
+  opacity: 1;
+}
