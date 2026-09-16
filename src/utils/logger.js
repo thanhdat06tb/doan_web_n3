@@ -21,6 +21,10 @@ const logFile = path.join(logsDir, 'app.log');
  * @param {object} data - Dữ liệu kèm theo
  */
 function log(level, action, data = {}) {
+  if (process.env.NODE_ENV === 'test') {
+    return;
+  }
+
   const timestamp = new Date().toISOString();
   const logEntry = {
     timestamp,

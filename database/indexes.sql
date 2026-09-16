@@ -31,3 +31,9 @@ ON deposit_transactions(order_id);
 -- Index cho tìm order_details theo order_id (JOIN tối ưu)
 CREATE INDEX IF NOT EXISTS idx_order_details_order
 ON order_details(order_id);
+
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user
+ON refresh_tokens(user_id, revoked_at, expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_invalidated_tokens_jti
+ON invalidated_tokens(token_jti, expires_at);

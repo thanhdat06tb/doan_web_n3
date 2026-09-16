@@ -34,6 +34,29 @@ function authenticate(req, res, next) {
     // Kiểm tra user có tồn tại và active trong DB
     // (Không chỉ tin JWT — luôn verify với DB)
     const db = getDatabase();
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS invalidated_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        token_jti TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+    `);
+
+    if (decoded.jti) {
+      db.prepare('DELETE FROM invalidated_tokens WHERE expires_at <= ?').run(new Date().toISOString());
+      const invalidated = db
+        .prepare('SELECT id FROM invalidated_tokens WHERE token_jti = ?')
+        .get(decoded.jti);
+
+      if (invalidated) {
+        return res.status(401).json(
+          errorResponse(ERROR_CODES.UNAUTHORIZED.code, 'Phiên đăng nhập đã được đăng xuất. Vui lòng đăng nhập lại.')
+        );
+      }
+    }
+
     const user = db
       .prepare('SELECT id, full_name, email, role, is_active FROM users WHERE id = ?')
       .get(decoded.userId);

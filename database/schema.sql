@@ -167,3 +167,23 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 
     FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE RESTRICT
 );
+
+-- 9. BẢNG REFRESH_TOKENS — Phiên đăng nhập dài hạn
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL,
+    token_hash      TEXT    NOT NULL UNIQUE,
+    expires_at      TEXT    NOT NULL,
+    revoked_at      TEXT    DEFAULT NULL,
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- 10. BẢNG INVALIDATED_TOKENS — Access token đã logout
+CREATE TABLE IF NOT EXISTS invalidated_tokens (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_jti       TEXT    NOT NULL UNIQUE,
+    expires_at      TEXT    NOT NULL,
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now', 'localtime'))
+);

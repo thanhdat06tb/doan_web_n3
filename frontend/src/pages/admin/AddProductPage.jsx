@@ -14,6 +14,7 @@ const AddProductPage = () => {
   });
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
   const previewImage = watch('image_url');
@@ -57,6 +58,37 @@ const AddProductPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const uploadImage = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setSubmitError('Vui lòng chọn file ảnh.');
+      return;
+    }
+
+    setUploading(true);
+    setSubmitError(null);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const response = await api.post('/admin/products/upload-image', {
+          fileName: file.name,
+          dataUrl: reader.result,
+        });
+        if (response.data.success) {
+          reset({ ...watch(), image_url: response.data.data.imageUrl });
+        }
+      } catch (err) {
+        setSubmitError(err.response?.data?.error?.message || 'Upload ảnh thất bại.');
+      } finally {
+        setUploading(false);
+        event.target.value = '';
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -192,6 +224,11 @@ const AddProductPage = () => {
               placeholder="https://example.com/image.jpg"
             />
             <p className="text-[11px] text-slate-500">Dán link ảnh trực tiếp (JPG, PNG).</p>
+            <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs font-bold text-blue-200 hover:bg-blue-500/20">
+              <ImageIcon className="h-4 w-4" />
+              {uploading ? 'Đang upload...' : 'Upload ảnh từ máy'}
+              <input type="file" accept="image/*" onChange={uploadImage} disabled={uploading} className="hidden" />
+            </label>
           </div>
           
           <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/50 h-32 overflow-hidden relative">

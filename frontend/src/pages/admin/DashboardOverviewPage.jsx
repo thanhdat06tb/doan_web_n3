@@ -25,15 +25,17 @@ import api from '../../utils/api';
 const DashboardOverviewPage = () => {
   const [summary, setSummary] = useState(null);
   const [chartData, setChartData] = useState([]);
+  const [overdueOrders, setOverdueOrders] = useState([]);
   const [period, setPeriod] = useState('30d');
   const [loading, setLoading] = useState(true);
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      const [sumRes, chartRes] = await Promise.all([
+      const [sumRes, chartRes, overdueRes] = await Promise.all([
         api.get('/admin/dashboard/summary'),
         api.get(`/admin/dashboard/revenue-chart?period=${period}`),
+        api.get('/admin/dashboard/overdue-orders'),
       ]);
 
       if (sumRes.data.success) {
@@ -48,11 +50,15 @@ const DashboardOverviewPage = () => {
         }));
         setChartData(formatted);
       }
+      if (overdueRes.data.success) {
+        setOverdueOrders(overdueRes.data.data || []);
+      }
     } catch (error) {
       if (import.meta.env.VITE_ENABLE_MOCKS !== 'true') {
         console.error('Failed to fetch admin dashboard data', error);
         setSummary(null);
         setChartData([]);
+        setOverdueOrders([]);
         return;
       }
 
@@ -113,6 +119,9 @@ const DashboardOverviewPage = () => {
   }
 
   const { revenue, deposits, orders, topRentedProducts } = summary || {};
+  const chartRangeLabel = chartData.length > 0
+    ? `${chartData[0].date} đến ${chartData[chartData.length - 1].date}`
+    : 'chưa có dữ liệu';
 
   return (
     <div className="space-y-6">
@@ -217,7 +226,7 @@ const DashboardOverviewPage = () => {
               <Calendar className="w-5 h-5 text-blue-400" />
               Biểu Đồ Xu Hướng Doanh Thu ({period})
             </h3>
-            <p className="text-xs text-slate-400">Phân tách doanh thu giữa Mua đứt và Cho thuê</p>
+            <p className="text-xs text-slate-400">Phân tách doanh thu bán và thuê, khoảng {chartRangeLabel}</p>
           </div>
         </div>
 
@@ -232,10 +241,60 @@ const DashboardOverviewPage = () => {
                 formatter={(value) => [formatCurrency(value), '']}
               />
               <Legend wrapperStyle={{ paddingTop: '10px' }} />
-              <Line type="monotone" dataKey="Doanh thu Bán" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 4 }} />
-              <Line type="monotone" dataKey="Doanh thu Thuê" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4 }} />
+              <Line type="monotone" dataKey="Doanh thu Bán" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              <Line type="monotone" dataKey="Doanh thu Thuê" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Đơn thuê quá hạn */}
+      <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 shadow-lg">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-white">Đơn thuê quá hạn</h3>
+            <p className="text-xs text-slate-400">Các đơn đang thuê nhưng đã quá ngày hẹn trả.</p>
+          </div>
+          <span className="rounded-full bg-rose-500/10 px-3 py-1 text-xs font-bold text-rose-300">
+            {overdueOrders.length} đơn
+          </span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-sm text-slate-300">
+            <thead className="bg-slate-900 text-xs uppercase text-slate-400 border-b border-slate-800">
+              <tr>
+                <th className="p-3">Mã đơn</th>
+                <th className="p-3">Khách hàng</th>
+                <th className="p-3">Sản phẩm</th>
+                <th className="p-3 text-center">Hạn trả</th>
+                <th className="p-3 text-center">Trễ</th>
+                <th className="p-3 text-right">Cọc đang giữ</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {overdueOrders.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="p-6 text-center text-slate-500">Không có đơn thuê quá hạn.</td>
+                </tr>
+              ) : overdueOrders.map((order) => (
+                <tr key={order.orderId} className="bg-rose-950/20 hover:bg-rose-950/30 transition-colors">
+                  <td className="p-3 font-bold text-white">#{order.orderId}</td>
+                  <td className="p-3">
+                    <p className="font-semibold text-white">{order.customerName}</p>
+                    <p className="text-xs text-slate-400">{order.customerPhone}</p>
+                  </td>
+                  <td className="p-3 max-w-sm truncate">{order.productNames}</td>
+                  <td className="p-3 text-center">{order.earliestEndDate}</td>
+                  <td className="p-3 text-center">
+                    <span className="rounded-full bg-rose-500/15 px-2.5 py-1 text-xs font-black text-rose-300">
+                      {order.overdueDays} ngày
+                    </span>
+                  </td>
+                  <td className="p-3 text-right font-bold text-amber-300">{formatCurrency(order.totalDeposit)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 

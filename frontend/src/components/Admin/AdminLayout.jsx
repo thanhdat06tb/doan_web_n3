@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, Navigate, NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, PackagePlus, ShoppingBag, ArrowLeft, Shield, Bell, Store } from 'lucide-react';
+import { LayoutDashboard, PackagePlus, ShoppingBag, ArrowLeft, Shield, Bell, Store, Boxes } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 const AdminLayout = () => {
@@ -71,6 +71,20 @@ const AdminLayout = () => {
             </NavLink>
 
             <NavLink
+              to="/admin/products"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                    : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                }`
+              }
+            >
+              <Boxes className="w-5 h-5" />
+              Quản lý sản phẩm
+            </NavLink>
+
+            <NavLink
               to="/admin/products/new"
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${
@@ -131,6 +145,17 @@ const AdminLayout = () => {
               >
                 <ShoppingBag className="h-4 w-4" />
                 Đơn hàng
+              </NavLink>
+              <NavLink
+                to="/admin/products"
+                className={({ isActive }) =>
+                  `inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+                    isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                  }`
+                }
+              >
+                <Boxes className="h-4 w-4" />
+                Sản phẩm
               </NavLink>
               <NavLink
                 to="/admin/products/new"

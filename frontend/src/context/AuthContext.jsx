@@ -20,6 +20,9 @@ export const AuthProvider = ({ children }) => {
 
   const saveSession = (session) => {
     localStorage.setItem('token', session.token);
+    if (session.refreshToken) {
+      localStorage.setItem('refreshToken', session.refreshToken);
+    }
     localStorage.setItem('user', JSON.stringify(session.user));
     setToken(session.token);
     setUser(session.user);
@@ -43,8 +46,17 @@ export const AuthProvider = ({ children }) => {
     return response.data.data.user;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    try {
+      if (token) {
+        await api.post('/auth/logout', { refreshToken });
+      }
+    } catch {
+      // Local logout still wins if the server is unavailable.
+    }
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     setToken(null);
     setUser(null);

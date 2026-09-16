@@ -23,6 +23,14 @@ const adminOrdersQuerySchema = z.object({
   limit: z.string().regex(/^\d+$/).transform(Number).optional().default('10'),
 });
 
+const adminProductsQuerySchema = z.object({
+  search: z.string().trim().max(100, 'Từ khóa tìm kiếm tối đa 100 ký tự.').optional().default(''),
+  category: z.string().regex(/^\d+$/).transform(Number).optional(),
+  status: z.enum(['ALL', 'ACTIVE', 'INACTIVE']).optional().default('ALL'),
+  page: z.string().regex(/^\d+$/).transform(Number).optional().default('1'),
+  limit: z.string().regex(/^\d+$/).transform(Number).optional().default('10'),
+});
+
 const updateStatusSchema = z.object({
   status: z.enum(['APPROVED', 'RENTING', 'CANCELLED', 'COMPLETED'], {
     errorMap: () => ({ message: 'Trạng thái không hợp lệ.' }),
@@ -61,6 +69,17 @@ const createProductSchema = z.object({
   (product) => product.price_rent_per_day <= 0 || product.deposit_amount > 0,
   { message: 'Sản phẩm cho thuê phải có tiền cọc lớn hơn 0.', path: ['deposit_amount'] }
 );
+
+const updateProductSchema = createProductSchema;
+
+const setProductActiveSchema = z.object({
+  is_active: z.boolean(),
+});
+
+const uploadProductImageSchema = z.object({
+  fileName: z.string().trim().min(1).max(180),
+  dataUrl: z.string().min(50, 'Ảnh không hợp lệ.').max(7_000_000, 'Ảnh tối đa khoảng 5MB.'),
+});
 
 // Yêu cầu đăng nhập + quyền Admin cho toàn bộ routes bên dưới
 router.use(authenticate, requireAdmin);
@@ -103,6 +122,21 @@ router.get('/dashboard/revenue-chart', (req, res) => {
 router.get('/dashboard/product-utilization', (req, res) => {
   try {
     const data = adminService.getProductUtilization();
+    res.json(successResponse(data));
+  } catch (error) {
+    res.status(error.status || 500).json(
+      errorResponse(error.code || 'INTERNAL_ERROR', error.message)
+    );
+  }
+});
+
+/**
+ * GET /api/admin/dashboard/overdue-orders
+ * Danh sách đơn đang thuê nhưng đã quá hạn trả
+ */
+router.get('/dashboard/overdue-orders', (req, res) => {
+  try {
+    const data = adminService.getOverdueRentalOrders({ limit: 10 });
     res.json(successResponse(data));
   } catch (error) {
     res.status(error.status || 500).json(
@@ -208,5 +242,95 @@ router.post('/products', validateRequest({ body: createProductSchema }), (req, r
     );
   }
 });
+
+/**
+ * GET /api/admin/products
+ * Danh sách sản phẩm cho Admin, gồm cả sản phẩm đã ngừng kinh doanh
+ */
+router.get('/products', validateRequest({ query: adminProductsQuerySchema }), (req, res) => {
+  try {
+    const { search, category, status, page, limit } = req.query;
+    const result = adminService.getAdminProducts({
+      search,
+      category,
+      status,
+      page: parseInt(page, 10) || 1,
+      limit: parseInt(limit, 10) || 10,
+    });
+    res.json(successResponse({ items: result.products, pagination: result.pagination }));
+  } catch (error) {
+    res.status(error.status || 500).json(
+      errorResponse(error.code || 'INTERNAL_ERROR', error.message)
+    );
+  }
+});
+
+/**
+ * POST /api/admin/products/upload-image
+ * Upload ảnh bằng data URL và trả về image_url để lưu sản phẩm
+ */
+router.post('/products/upload-image', validateRequest({ body: uploadProductImageSchema }), (req, res) => {
+  try {
+    const result = adminService.uploadProductImage(req.body, req.user.id);
+    res.json(successResponse(result, 'Upload ảnh thành công'));
+  } catch (error) {
+    res.status(error.status || 500).json(
+      errorResponse(error.code || 'INTERNAL_ERROR', error.message)
+    );
+  }
+});
+
+/**
+ * GET /api/admin/products/:id
+ * Chi tiết sản phẩm cho form chỉnh sửa
+ */
+router.get('/products/:id', validateRequest({ params: idParamSchema }), (req, res) => {
+  try {
+    const product = adminService.getAdminProductDetail(req.params.id);
+    res.json(successResponse(product));
+  } catch (error) {
+    res.status(error.status || 500).json(
+      errorResponse(error.code || 'INTERNAL_ERROR', error.message)
+    );
+  }
+});
+
+/**
+ * PUT /api/admin/products/:id
+ * Cập nhật sản phẩm
+ */
+router.put(
+  '/products/:id',
+  validateRequest({ params: idParamSchema, body: updateProductSchema }),
+  (req, res) => {
+    try {
+      const result = adminService.updateProduct(req.params.id, req.body, req.user.id);
+      res.json(successResponse(result, 'Cập nhật sản phẩm thành công'));
+    } catch (error) {
+      res.status(error.status || 500).json(
+        errorResponse(error.code || 'INTERNAL_ERROR', error.message)
+      );
+    }
+  }
+);
+
+/**
+ * PATCH /api/admin/products/:id/active
+ * Ngừng hoặc mở lại kinh doanh sản phẩm
+ */
+router.patch(
+  '/products/:id/active',
+  validateRequest({ params: idParamSchema, body: setProductActiveSchema }),
+  (req, res) => {
+    try {
+      const result = adminService.setProductActive(req.params.id, req.body.is_active, req.user.id);
+      res.json(successResponse(result, req.body.is_active ? 'Đã mở lại sản phẩm' : 'Đã ngừng kinh doanh sản phẩm'));
+    } catch (error) {
+      res.status(error.status || 500).json(
+        errorResponse(error.code || 'INTERNAL_ERROR', error.message)
+      );
+    }
+  }
+);
 
 module.exports = router;

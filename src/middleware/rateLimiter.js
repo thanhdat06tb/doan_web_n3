@@ -59,7 +59,7 @@ function orderRateLimiter(req, res, next) {
  * Dọn dẹp timestamps hết hạn (chạy mỗi 5 phút)
  * Tránh memory leak cho long-running server
  */
-setInterval(() => {
+const cleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [userId, timestamps] of orderTimestamps.entries()) {
     const valid = timestamps.filter((ts) => now - ts < WINDOW_MS);
@@ -70,5 +70,9 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+
+if (typeof cleanupInterval.unref === 'function') {
+  cleanupInterval.unref();
+}
 
 module.exports = { orderRateLimiter };

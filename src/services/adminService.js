@@ -6,6 +6,8 @@
 const { getDatabase } = require('../database/connection');
 const { ERROR_CODES, VALID_STATUS_TRANSITIONS } = require('../constants/errorCodes');
 const logger = require('../utils/logger');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Đảm bảo các bảng bổ sung cho admin tồn tại
@@ -196,6 +198,34 @@ function getProductUtilization() {
       utilizationRate: `${rate}%`,
     };
   });
+}
+
+/**
+ * 3b. Danh sách đơn thuê quá hạn cần xử lý
+ */
+function getOverdueRentalOrders({ limit = 10 } = {}) {
+  const db = getDatabase();
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  return db.prepare(`
+    SELECT
+      o.id AS orderId,
+      o.shipping_name AS customerName,
+      o.shipping_phone AS customerPhone,
+      o.total_deposit AS totalDeposit,
+      MIN(od.end_date) AS earliestEndDate,
+      CAST(julianday(?) - julianday(MIN(od.end_date)) AS INTEGER) AS overdueDays,
+      GROUP_CONCAT(p.name, ', ') AS productNames
+    FROM orders o
+    JOIN order_details od ON od.order_id = o.id
+    JOIN products p ON p.id = od.product_id
+    WHERE o.status = 'RENTING'
+      AND od.type = 'RENT'
+      AND od.end_date < ?
+    GROUP BY o.id
+    ORDER BY overdueDays DESC, o.id DESC
+    LIMIT ?
+  `).all(todayStr, todayStr, limit);
 }
 
 /**
@@ -494,6 +524,13 @@ function createProduct(productData, adminId) {
 
   const newProductId = result.lastInsertRowid;
 
+  if (image_url) {
+    db.prepare(`
+      INSERT INTO product_images (product_id, image_url, is_primary, sort_order)
+      VALUES (?, ?, 1, 0)
+    `).run(newProductId, image_url);
+  }
+
   // Audit log
   db.prepare(`
     INSERT INTO audit_logs (admin_id, action, target_table, target_id, new_value)
@@ -505,13 +542,240 @@ function createProduct(productData, adminId) {
   return { success: true, id: newProductId };
 }
 
+/**
+ * 9. Danh sách sản phẩm cho Admin
+ */
+function getAdminProducts({ search = '', category, status = 'ALL', page = 1, limit = 10 }) {
+  const db = getDatabase();
+  const offset = (page - 1) * limit;
+  const conditions = ['1=1'];
+  const params = [];
+
+  if (search) {
+    conditions.push('(p.name LIKE ? OR p.description LIKE ?)');
+    params.push(`%${search}%`, `%${search}%`);
+  }
+
+  if (category) {
+    conditions.push('p.category_id = ?');
+    params.push(category);
+  }
+
+  if (status === 'ACTIVE') {
+    conditions.push('p.is_active = 1');
+  } else if (status === 'INACTIVE') {
+    conditions.push('p.is_active = 0');
+  }
+
+  const whereClause = conditions.join(' AND ');
+  const total = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM products p
+    WHERE ${whereClause}
+  `).get(...params).count;
+
+  const products = db.prepare(`
+    SELECT
+      p.id, p.category_id, p.name, p.description,
+      p.price_sell, p.price_rent_per_day, p.deposit_amount,
+      p.stock_quantity, p.image_url, p.is_active,
+      p.created_at, p.updated_at,
+      c.name AS category_name
+    FROM products p
+    JOIN categories c ON c.id = p.category_id
+    WHERE ${whereClause}
+    ORDER BY p.updated_at DESC, p.id DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
+
+  return {
+    products,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+}
+
+function getAdminProductDetail(productId) {
+  const db = getDatabase();
+  const product = db.prepare(`
+    SELECT
+      p.id, p.category_id, p.name, p.description,
+      p.price_sell, p.price_rent_per_day, p.deposit_amount,
+      p.stock_quantity, p.image_url, p.is_active,
+      p.created_at, p.updated_at,
+      c.name AS category_name
+    FROM products p
+    JOIN categories c ON c.id = p.category_id
+    WHERE p.id = ?
+  `).get(productId);
+
+  if (!product) {
+    throw { ...ERROR_CODES.PRODUCT_NOT_FOUND };
+  }
+
+  const images = db.prepare(`
+    SELECT id, image_url, is_primary, sort_order
+    FROM product_images
+    WHERE product_id = ?
+    ORDER BY sort_order ASC
+  `).all(productId);
+
+  return { ...product, images };
+}
+
+/**
+ * 10. Cập nhật sản phẩm, giữ snapshot giá trong order_details không đổi
+ */
+function updateProduct(productId, productData, adminId) {
+  const db = getDatabase();
+  ensureAdminTables(db);
+
+  const current = db.prepare('SELECT * FROM products WHERE id = ?').get(productId);
+  if (!current) {
+    throw { ...ERROR_CODES.PRODUCT_NOT_FOUND };
+  }
+
+  const next = {
+    category_id: productData.category_id,
+    name: productData.name,
+    description: productData.description || '',
+    price_sell: productData.price_sell || 0,
+    price_rent_per_day: productData.price_rent_per_day || 0,
+    deposit_amount: productData.deposit_amount || 0,
+    stock_quantity: productData.stock_quantity || 0,
+    image_url: productData.image_url || '',
+  };
+
+  const transaction = db.transaction(() => {
+    db.prepare(`
+      UPDATE products
+      SET
+        category_id = @category_id,
+        name = @name,
+        description = @description,
+        price_sell = @price_sell,
+        price_rent_per_day = @price_rent_per_day,
+        deposit_amount = @deposit_amount,
+        stock_quantity = @stock_quantity,
+        image_url = @image_url,
+        updated_at = datetime('now', 'localtime')
+      WHERE id = @id
+    `).run({ id: productId, ...next });
+
+    db.prepare(`
+      DELETE FROM product_images
+      WHERE product_id = ? AND is_primary = 1
+    `).run(productId);
+
+    if (next.image_url) {
+      db.prepare(`
+        INSERT INTO product_images (product_id, image_url, is_primary, sort_order)
+        VALUES (?, ?, 1, 0)
+      `).run(productId, next.image_url);
+    }
+
+    db.prepare(`
+      INSERT INTO audit_logs (admin_id, action, target_table, target_id, old_value, new_value)
+      VALUES (?, 'UPDATE_PRODUCT', 'products', ?, ?, ?)
+    `).run(adminId, productId, JSON.stringify(current), JSON.stringify(next));
+  });
+
+  transaction();
+  logger.info('ADMIN_UPDATE_PRODUCT', { adminId, productId });
+
+  return { success: true, id: productId };
+}
+
+function setProductActive(productId, isActive, adminId) {
+  const db = getDatabase();
+  ensureAdminTables(db);
+
+  const current = db.prepare('SELECT id, name, is_active FROM products WHERE id = ?').get(productId);
+  if (!current) {
+    throw { ...ERROR_CODES.PRODUCT_NOT_FOUND };
+  }
+
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE products
+      SET is_active = ?, updated_at = datetime('now', 'localtime')
+      WHERE id = ?
+    `).run(isActive ? 1 : 0, productId);
+
+    db.prepare(`
+      INSERT INTO audit_logs (admin_id, action, target_table, target_id, old_value, new_value)
+      VALUES (?, ?, 'products', ?, ?, ?)
+    `).run(
+      adminId,
+      isActive ? 'ACTIVATE_PRODUCT' : 'DEACTIVATE_PRODUCT',
+      productId,
+      JSON.stringify(current),
+      JSON.stringify({ ...current, is_active: isActive ? 1 : 0 })
+    );
+  })();
+
+  logger.info('ADMIN_SET_PRODUCT_ACTIVE', { adminId, productId, isActive });
+  return { success: true, id: productId, isActive: isActive ? 1 : 0 };
+}
+
+/**
+ * 11. Upload ảnh sản phẩm dạng data URL, lưu vào frontend/public/images
+ */
+function uploadProductImage({ fileName, dataUrl }, adminId) {
+  const match = /^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i.exec(dataUrl || '');
+  if (!match) {
+    throw {
+      ...ERROR_CODES.VALIDATION_ERROR,
+      message: 'File ảnh không hợp lệ. Chỉ hỗ trợ PNG, JPG, JPEG hoặc WEBP.',
+    };
+  }
+
+  const extension = match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase();
+  const safeBaseName = path
+    .basename(fileName || `product-${Date.now()}`)
+    .replace(/\.[^.]+$/, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9-_]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase() || `product-${Date.now()}`;
+
+  const finalName = `${safeBaseName}-${Date.now()}.${extension}`;
+  const targetDir = path.resolve(__dirname, '../../frontend/public/images');
+  const targetPath = path.join(targetDir, finalName);
+  const buffer = Buffer.from(match[2], 'base64');
+
+  if (buffer.length > 5 * 1024 * 1024) {
+    throw {
+      ...ERROR_CODES.VALIDATION_ERROR,
+      message: 'Ảnh tối đa 5MB.',
+    };
+  }
+
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.writeFileSync(targetPath, buffer);
+
+  logger.info('ADMIN_UPLOAD_PRODUCT_IMAGE', { adminId, fileName: finalName });
+  return { imageUrl: `/images/${finalName}` };
+}
+
 module.exports = {
   getDashboardSummary,
   getRevenueChartData,
   getProductUtilization,
+  getOverdueRentalOrders,
   getAdminOrders,
   getAdminOrderDetail,
   updateOrderStatus,
   completeOrderAndProcessDeposit,
   createProduct,
+  getAdminProducts,
+  getAdminProductDetail,
+  updateProduct,
+  setProductActive,
+  uploadProductImage,
 };

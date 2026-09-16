@@ -51,7 +51,7 @@ app.use(express.urlencoded({ extended: true }));
 // HTTP request logging
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
-} else {
+} else if (process.env.NODE_ENV !== 'test') {
   // Production: log vào file
   const accessLogStream = fs.createWriteStream(
     path.join(__dirname, '../logs/access.log'),
@@ -142,6 +142,7 @@ app.use((err, req, res, next) => {
 // START SERVER
 // ═══════════════════════════════════════════════════════════════
 
+if (require.main === module) {
 app.listen(PORT, () => {
   console.log('\n═══════════════════════════════════════════');
   console.log(`  🚀 Server đang chạy tại: http://localhost:${PORT}`);
@@ -162,6 +163,7 @@ app.listen(PORT, () => {
   console.log('  GET    /api/orders/:orderId');
   console.log('');
 });
+}
 
 // ═══════════════════════════════════════════════════════════════
 // GRACEFUL SHUTDOWN

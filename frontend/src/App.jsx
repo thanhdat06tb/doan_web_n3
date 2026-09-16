@@ -17,6 +17,7 @@ import AdminLayout from './components/Admin/AdminLayout';
 import DashboardOverviewPage from './pages/admin/DashboardOverviewPage';
 import OrderManagementPage from './pages/admin/OrderManagementPage';
 import AddProductPage from './pages/admin/AddProductPage';
+import ProductManagementPage from './pages/admin/ProductManagementPage';
 
 const CustomerLayout = ({ onOpenCart }) => (
   <div className="min-h-screen flex flex-col font-sans">
@@ -67,6 +68,7 @@ const AppContent = () => {
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<DashboardOverviewPage />} />
           <Route path="orders" element={<OrderManagementPage />} />
+          <Route path="products" element={<ProductManagementPage />} />
           <Route path="products/new" element={<AddProductPage />} />
         </Route>
 
