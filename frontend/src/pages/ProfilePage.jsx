@@ -2,20 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Package, User, MapPin, Phone, LogOut } from 'lucide-react';
 import api from '../utils/api';
+import { useAuth } from '../hooks/useAuth';
 
 const ProfilePage = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
+  const auth = useAuth();
 
-  const token = localStorage.getItem('token');
+  const token = auth.token;
   // Dummy user profile for now, in a real app this would come from an API
   const user = {
     name: 'Khách hàng',
     email: 'khachhang@example.com',
     phone: '0987654321',
   };
+  const profileUser = auth.user || user;
 
   useEffect(() => {
     if (!token) {
@@ -40,9 +43,9 @@ const ProfilePage = () => {
     fetchOrders();
   }, [token]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    navigate('/');
+  const handleLogout = async () => {
+    navigate('/login', { replace: true });
+    await auth.logout();
   };
 
   const getStatusBadge = (status) => {
@@ -66,14 +69,14 @@ const ProfilePage = () => {
               <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mb-4">
                 <User size={40} />
               </div>
-              <h2 className="text-xl font-bold text-slate-900">{user.name}</h2>
-              <p className="text-slate-500">{user.email}</p>
+              <h2 className="text-xl font-bold text-slate-900">{profileUser.fullName || profileUser.name}</h2>
+              <p className="text-slate-500">{profileUser.email}</p>
             </div>
             
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-slate-600">
                 <Phone size={18} />
-                <span>{user.phone}</span>
+                <span>{profileUser.phone || 'Chua cap nhat'}</span>
               </div>
               <div className="flex items-center gap-3 text-slate-600">
                 <MapPin size={18} />

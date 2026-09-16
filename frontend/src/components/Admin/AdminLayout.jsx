@@ -5,12 +5,13 @@ import { useAuth } from '../../hooks/useAuth';
 
 const AdminLayout = () => {
   const { user, isAuthenticated } = useAuth();
+  const adminUser = user || {};
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: '/admin' }} replace />;
   }
 
-  if (user?.role !== 'ADMIN') {
+  if (adminUser.role !== 'ADMIN') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-center text-white">
         <div>
@@ -186,8 +187,8 @@ const AdminLayout = () => {
                 A
               </div>
               <div className="text-xs">
-                <p className="font-semibold text-slate-200">{user.fullName || 'Quản trị viên'}</p>
-                <p className="text-slate-500">{user.email}</p>
+                <p className="font-semibold text-slate-200">{adminUser.fullName || adminUser.full_name || 'Quản trị viên'}</p>
+                <p className="text-slate-500">{adminUser.email || 'admin@rental.vn'}</p>
               </div>
             </div>
           </div>

@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/dist/style.css';
-import { CalendarDays, CheckCircle2, Loader2, Minus, Plus, ShoppingCart, XCircle } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Loader2, Minus, Plus, ShoppingCart, XCircle, Zap } from 'lucide-react';
 import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 import { useDateBlocker } from '../../hooks/useDateBlocker';
 import { useProductAvailability } from '../../hooks/useProductAvailability';
 import { formatCurrency, calculateRentalDays } from '../../utils/formatters';
@@ -12,6 +13,7 @@ const formatDate = (date) => (date ? format(date, 'dd/MM/yyyy') : '--');
 
 const LiveConfigurator = ({ product }) => {
   const { addToCart } = useCart();
+  const navigate = useNavigate();
   const [type, setType] = useState(product.price_rent_per_day > 0 ? 'RENT' : 'BUY');
   const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
   const [quantity, setQuantity] = useState(1);
@@ -54,10 +56,7 @@ const LiveConfigurator = ({ product }) => {
     setDateRange({ from: undefined, to: undefined });
   };
 
-  const handleAddToCart = () => {
-    if (!isFormValid) return;
-
-    addToCart({
+  const buildCartItem = () => ({
       productId: product.id,
       name: product.name,
       price: type === 'BUY' ? product.price_sell : product.price_rent_per_day,
@@ -69,8 +68,20 @@ const LiveConfigurator = ({ product }) => {
       image: product.image_url,
     });
 
+  const handleAddToCart = () => {
+    if (!isFormValid) return;
+
+    addToCart(buildCartItem());
+
     setToast('Đã thêm sản phẩm vào giỏ hàng.');
     window.setTimeout(() => setToast(null), 2600);
+  };
+
+  const handleCheckoutNow = () => {
+    if (!isFormValid) return;
+
+    addToCart(buildCartItem());
+    navigate('/checkout');
   };
 
   return (
@@ -117,7 +128,7 @@ const LiveConfigurator = ({ product }) => {
                 <CalendarDays className="h-4 w-4 text-blue-600" />
                 2. Lịch thuê
               </h2>
-              <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500">
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-800 shadow-sm">
                 {formatDate(dateRange.from)} - {formatDate(dateRange.to)}
               </span>
             </div>
@@ -125,7 +136,7 @@ const LiveConfigurator = ({ product }) => {
             {loadingBlocker ? (
               <div className="h-72 animate-pulse rounded-xl bg-slate-200" />
             ) : (
-              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white p-2">
+              <div className="product-calendar overflow-hidden rounded-xl border border-slate-200 bg-white p-2 text-slate-950">
                 <DayPicker
                   mode="range"
                   selected={dateRange}
@@ -136,8 +147,8 @@ const LiveConfigurator = ({ product }) => {
                     selected: 'bg-blue-600 text-white',
                     range_start: 'bg-blue-700 text-white',
                     range_end: 'bg-blue-700 text-white',
-                    range_middle: 'bg-blue-100 text-blue-900',
-                    disabled: 'line-through opacity-30',
+                    range_middle: 'bg-blue-100 text-blue-950',
+                    disabled: 'line-through text-slate-400 opacity-100',
                   }}
                   className="mx-auto"
                 />
@@ -197,7 +208,7 @@ const LiveConfigurator = ({ product }) => {
                 <Plus className="h-4 w-4" />
               </button>
             </div>
-            <span className="text-sm font-semibold text-slate-500">
+            <span className="text-sm font-bold text-slate-700">
               Có sẵn: {maxQty}
             </span>
           </div>
@@ -205,7 +216,7 @@ const LiveConfigurator = ({ product }) => {
 
         <section className="rounded-xl border border-blue-100 bg-blue-50 p-4">
           <h2 className="mb-3 text-sm font-black text-blue-950">Tóm tắt chi phí</h2>
-          <div className="space-y-2 text-sm text-blue-900">
+          <div className="space-y-2 text-sm font-medium text-blue-950">
             {type === 'RENT' ? (
               <>
                 <div className="flex justify-between gap-4"><span>Số ngày thuê</span><strong>{rentalDays} ngày</strong></div>
@@ -229,15 +240,29 @@ const LiveConfigurator = ({ product }) => {
           </div>
         </section>
 
-        <button
-          type="button"
-          onClick={handleAddToCart}
-          disabled={!isFormValid || loadingAvail}
-          className="sticky bottom-3 z-10 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-4 text-sm font-black text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none md:static"
-        >
-          <ShoppingCart className="h-5 w-5" />
-          Thêm vào giỏ hàng
-        </button>
+        <div className="sticky bottom-3 z-10 grid gap-3 rounded-2xl bg-white/95 p-2 shadow-xl shadow-slate-900/10 backdrop-blur md:static md:bg-transparent md:p-0 md:shadow-none">
+          <button
+            type="button"
+            onClick={handleCheckoutNow}
+            disabled={!isFormValid || loadingAvail}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-4 text-sm font-black text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+          >
+            <Zap className="h-5 w-5" />
+            {type === 'RENT' ? 'Thuê ngay' : 'Mua ngay'}
+          </button>
+          <button
+            type="button"
+            onClick={handleAddToCart}
+            disabled={!isFormValid || loadingAvail}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-5 py-3 text-sm font-black text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+          >
+            <ShoppingCart className="h-5 w-5" />
+            Thêm vào giỏ hàng
+          </button>
+          <p className="text-center text-xs font-semibold text-slate-500">
+            Thuê ngay để xác nhận đơn. Thêm giỏ hàng khi bạn muốn suy nghĩ thêm.
+          </p>
+        </div>
       </div>
 
       {toast && (

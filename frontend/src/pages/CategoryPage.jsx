@@ -74,13 +74,13 @@ const CategoryPage = () => {
   return (
     <div className="container mx-auto px-4 py-12 max-w-6xl">
       <div className="mb-10 text-center">
-        <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">{categoryName}</h1>
+        <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">{categoryName}</h1>
         {searchQuery && (
           <button onClick={clearSearch} className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
             Xóa tìm kiếm <X size={14} />
           </button>
         )}
-        <p className="text-slate-500 max-w-2xl mx-auto">
+        <p className="text-slate-300 max-w-2xl mx-auto">
           Khám phá các thiết bị, dụng cụ và đồ chuyên dụng chất lượng cao. Chúng tôi cung cấp cả dịch vụ bán và cho thuê để đáp ứng mọi nhu cầu của bạn.
         </p>
       </div>

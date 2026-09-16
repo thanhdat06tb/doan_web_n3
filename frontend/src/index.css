@@ -4,14 +4,69 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 min-h-screen antialiased;
-    /* Mesh gradient effect for a premium look */
-    background-color: #f8fafc;
+    @apply bg-slate-950 text-slate-100 min-h-screen antialiased;
+    /* Dark mesh surface for a softer modern look */
+    background-color: #07111f;
     background-image: 
-      radial-gradient(at 40% 20%, hsla(228,100%,74%,0.1) 0px, transparent 50%),
-      radial-gradient(at 80% 0%, hsla(189,100%,56%,0.1) 0px, transparent 50%),
-      radial-gradient(at 0% 50%, hsla(355,100%,93%,0.1) 0px, transparent 50%);
+      radial-gradient(at 18% 12%, rgba(34, 211, 238, 0.14) 0px, transparent 38%),
+      radial-gradient(at 80% 0%, rgba(245, 158, 11, 0.12) 0px, transparent 34%),
+      radial-gradient(at 65% 70%, rgba(16, 185, 129, 0.10) 0px, transparent 36%);
     background-attachment: fixed;
+  }
+
+  img {
+    @apply select-none;
+  }
+}
+
+@layer components {
+  .bg-white,
+  .bg-slate-50,
+  .bg-gray-50,
+  .bg-blue-50,
+  .bg-red-50,
+  .bg-rose-50,
+  .bg-emerald-50,
+  .bg-yellow-50 {
+    color: #0f172a;
+  }
+
+  .bg-white :is(h1, h2, h3, h4, h5, h6, label, strong):not([class*="text-"]),
+  .bg-slate-50 :is(h1, h2, h3, h4, h5, h6, label, strong):not([class*="text-"]),
+  .bg-gray-50 :is(h1, h2, h3, h4, h5, h6, label, strong):not([class*="text-"]) {
+    color: #020617;
+  }
+
+  .bg-white :is(p, span, li, td, th):not([class*="text-"]),
+  .bg-slate-50 :is(p, span, li, td, th):not([class*="text-"]),
+  .bg-gray-50 :is(p, span, li, td, th):not([class*="text-"]) {
+    color: inherit;
+  }
+
+  .bg-white .text-slate-500,
+  .bg-white .text-gray-500,
+  .bg-slate-50 .text-slate-500,
+  .bg-gray-50 .text-gray-500 {
+    color: #475569 !important;
+  }
+
+  .bg-white .text-slate-400,
+  .bg-white .text-gray-400,
+  .bg-slate-50 .text-slate-400,
+  .bg-gray-50 .text-gray-400 {
+    color: #64748b !important;
+  }
+
+  input,
+  textarea,
+  select {
+    color: #020617;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #64748b;
+    opacity: 1;
   }
 }
 
@@ -22,4 +77,37 @@
 
 .fade-enter-active {
   opacity: 1;
+}
+
+.product-calendar .rdp-root,
+.product-calendar .rdp {
+  --rdp-accent-color: #1d4ed8;
+  --rdp-accent-background-color: #dbeafe;
+  color: #0f172a;
+}
+
+.product-calendar .rdp-month_caption,
+.product-calendar .rdp-caption_label,
+.product-calendar .rdp-weekday,
+.product-calendar .rdp-day,
+.product-calendar .rdp-day_button {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.product-calendar .rdp-weekday {
+  color: #64748b;
+}
+
+.product-calendar .rdp-disabled,
+.product-calendar [aria-disabled='true'] {
+  color: #94a3b8 !important;
+  opacity: 1 !important;
+}
+
+.product-calendar .rdp-selected,
+.product-calendar .rdp-selected .rdp-day_button,
+.product-calendar .rdp-range_start,
+.product-calendar .rdp-range_end {
+  color: #ffffff !important;
 }

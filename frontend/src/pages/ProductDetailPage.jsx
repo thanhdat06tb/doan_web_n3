@@ -5,6 +5,41 @@ import LiveConfigurator from '../components/Product/LiveConfigurator';
 import api from '../utils/api';
 import { mockProducts } from '../utils/mockData';
 
+const exactExtraImagesByProductId = {
+  1: ['/images/bosch-gbh226-angle.png', '/images/bosch-gbh226-color.png'],
+  2: ['/images/makita-4100nh-angle.png', '/images/makita-4100nh-color.png'],
+  3: ['/images/concrete-mixer-350-angle.png', '/images/concrete-mixer-350-color.png'],
+  4: ['/images/ao-phan-quang-bao-ho-angle.png', '/images/ao-phan-quang-bao-ho-color.png'],
+  5: ['/images/quan-ao-bao-ho-angle.png', '/images/quan-ao-bao-ho-color.png'],
+  6: ['/images/giay-bao-ho-angle.png', '/images/giay-bao-ho-color.png'],
+  7: ['/images/sony-a7iii-angle.png', '/images/sony-a7iii-color.png'],
+  8: ['/images/dji-ronin-rs3-angle.png', '/images/dji-ronin-rs3-color.png'],
+  9: ['/images/dji-mavic3-pro-angle.png', '/images/dji-mavic3-pro-color.png'],
+  10: ['/images/godox-sl150w-angle.png', '/images/godox-sl150w-color.png'],
+};
+
+const makeImageVariant = (src, label, imageClassName = '') => ({
+  image_url: src,
+  label,
+  imageClassName,
+});
+
+const getProductGalleryImages = (product) => {
+  const apiImages = Array.isArray(product.images)
+    ? product.images.map((image) => (typeof image === 'string' ? image : image.image_url)).filter(Boolean)
+    : [];
+
+  const exactImages = [
+    product.image_url,
+    ...apiImages,
+    ...(exactExtraImagesByProductId[product.id] || []),
+  ].filter(Boolean);
+
+  const uniqueExactImages = [...new Set(exactImages)];
+  const labels = ['Nguyên bản', 'Góc chụp khác', 'Màu sắc khác'];
+  return uniqueExactImages.map((src, index) => makeImageVariant(src, labels[index] || `Góc ${index + 1}`));
+};
+
 const ProductDetailPage = () => {
   const { id } = useParams();
   const [product, setProduct] = useState(null);
@@ -82,13 +117,13 @@ const ProductDetailPage = () => {
         {/* Cột trái 60%: Gallery ảnh */}
         <div className="w-full lg:w-3/5">
           <ImageGallery
-            images={(product.images && product.images.length > 0) ? product.images : [product.image_url]}
+            images={getProductGalleryImages(product)}
             availableQty={product.availableQtyToday ?? product.stock_quantity}
           />
           
           <div className="mt-10">
             <h2 className="mb-4 text-2xl font-bold">Thông tin sản phẩm</h2>
-            <div className="prose max-w-none text-gray-700">
+            <div className="prose max-w-none text-slate-300">
               <p>{product.description || 'Sản phẩm chưa có mô tả chi tiết.'}</p>
             </div>
           </div>

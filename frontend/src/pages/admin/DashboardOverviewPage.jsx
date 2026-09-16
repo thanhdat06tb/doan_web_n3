@@ -22,8 +22,38 @@ import {
 import { formatCurrency } from '../../utils/formatters';
 import api from '../../utils/api';
 
+const emptySummary = {
+  revenue: {
+    totalSell: 0,
+    totalRent: 0,
+    thisMonth: 0,
+    lastMonth: 0,
+    growthPercent: 0,
+  },
+  deposits: {
+    totalHolding: 0,
+    totalReturned: 0,
+    riskAmount: 0,
+  },
+  orders: {
+    PENDING: 0,
+    APPROVED: 0,
+    RENTING: 0,
+    COMPLETED: 0,
+    CANCELLED: 0,
+  },
+  topRentedProducts: [],
+};
+
+const normalizeSummary = (data) => ({
+  revenue: { ...emptySummary.revenue, ...(data?.revenue || {}) },
+  deposits: { ...emptySummary.deposits, ...(data?.deposits || {}) },
+  orders: { ...emptySummary.orders, ...(data?.orders || {}) },
+  topRentedProducts: Array.isArray(data?.topRentedProducts) ? data.topRentedProducts : [],
+});
+
 const DashboardOverviewPage = () => {
-  const [summary, setSummary] = useState(null);
+  const [summary, setSummary] = useState(emptySummary);
   const [chartData, setChartData] = useState([]);
   const [overdueOrders, setOverdueOrders] = useState([]);
   const [period, setPeriod] = useState('30d');
@@ -32,17 +62,23 @@ const DashboardOverviewPage = () => {
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      const [sumRes, chartRes, overdueRes] = await Promise.all([
+      const [sumResult, chartResult, overdueResult] = await Promise.allSettled([
         api.get('/admin/dashboard/summary'),
         api.get(`/admin/dashboard/revenue-chart?period=${period}`),
         api.get('/admin/dashboard/overdue-orders'),
       ]);
 
-      if (sumRes.data.success) {
-        setSummary(sumRes.data.data);
+      const sumRes = sumResult.status === 'fulfilled' ? sumResult.value : null;
+      const chartRes = chartResult.status === 'fulfilled' ? chartResult.value : null;
+      const overdueRes = overdueResult.status === 'fulfilled' ? overdueResult.value : null;
+
+      if (sumRes?.data?.success) {
+        setSummary(normalizeSummary(sumRes.data.data));
       }
-      if (chartRes.data.success) {
-        const { labels, sellData, rentData } = chartRes.data.data;
+      if (chartRes?.data?.success) {
+        const labels = Array.isArray(chartRes.data.data?.labels) ? chartRes.data.data.labels : [];
+        const sellData = Array.isArray(chartRes.data.data?.sellData) ? chartRes.data.data.sellData : [];
+        const rentData = Array.isArray(chartRes.data.data?.rentData) ? chartRes.data.data.rentData : [];
         const formatted = labels.map((label, idx) => ({
           date: label,
           'Doanh thu Bán': sellData[idx] || 0,
@@ -50,20 +86,26 @@ const DashboardOverviewPage = () => {
         }));
         setChartData(formatted);
       }
-      if (overdueRes.data.success) {
+      if (overdueRes?.data?.success) {
         setOverdueOrders(overdueRes.data.data || []);
+      } else {
+        setOverdueOrders([]);
+      }
+
+      if (sumResult.status === 'rejected' || chartResult.status === 'rejected') {
+        throw sumResult.reason || chartResult.reason;
       }
     } catch (error) {
       if (import.meta.env.VITE_ENABLE_MOCKS !== 'true') {
         console.error('Failed to fetch admin dashboard data', error);
-        setSummary(null);
+        setSummary(emptySummary);
         setChartData([]);
         setOverdueOrders([]);
         return;
       }
 
       console.warn('Backend not responding, using mock admin summary data', error.message);
-      setSummary({
+      setSummary(normalizeSummary({
         revenue: {
           totalSell: 45000000,
           totalRent: 28500000,
@@ -89,7 +131,7 @@ const DashboardOverviewPage = () => {
           { productId: 3, name: 'Flycam DJI Mavic 3 Pro', totalRentals: 12, totalRevenue: 7500000 },
           { productId: 4, name: 'Đèn Quay Phim Godox SL60W', totalRentals: 9, totalRevenue: 1800000 },
         ],
-      });
+      }));
 
       // Mock Chart Data
       setChartData([

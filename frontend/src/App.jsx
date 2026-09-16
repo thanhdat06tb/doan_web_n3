@@ -39,8 +39,8 @@ const CustomerLayout = ({ onOpenCart }) => (
               <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
                 <span className="text-green-600 text-4xl">✓</span>
               </div>
-              <h1 className="text-4xl font-bold text-slate-900 mb-4">Đặt hàng thành công!</h1>
-              <p className="text-slate-600 max-w-md mx-auto mb-8">
+              <h1 className="text-4xl font-bold text-white mb-4">Đặt hàng thành công!</h1>
+              <p className="text-slate-300 max-w-md mx-auto mb-8">
                 Cảm ơn bạn đã tin tưởng dịch vụ của chúng tôi. Đơn hàng của bạn đang được xử lý và sẽ sớm được giao.
               </p>
               <Link
