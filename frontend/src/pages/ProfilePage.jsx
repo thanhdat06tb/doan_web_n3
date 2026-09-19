@@ -1,8 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Package, User, MapPin, Phone, LogOut } from 'lucide-react';
+import { LogOut, MapPin, Package, Phone, User } from 'lucide-react';
 import api from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
+
+const statusClasses = {
+  PENDING: 'bg-[#fff1d6] text-[#9a3412]',
+  APPROVED: 'bg-blue-50 text-blue-700',
+  RENTING: 'bg-teal-50 text-[#0f766e]',
+  COMPLETED: 'bg-emerald-50 text-emerald-700',
+  CANCELLED: 'bg-rose-50 text-rose-700',
+};
+
+const statusLabels = {
+  PENDING: 'Chờ duyệt',
+  APPROVED: 'Đã duyệt',
+  RENTING: 'Đang thuê',
+  COMPLETED: 'Hoàn thành',
+  CANCELLED: 'Đã hủy',
+};
 
 const ProfilePage = () => {
   const [orders, setOrders] = useState([]);
@@ -10,15 +26,14 @@ const ProfilePage = () => {
   const [error, setError] = useState(null);
   const navigate = useNavigate();
   const auth = useAuth();
+  const { token } = auth;
 
-  const token = auth.token;
-  // Dummy user profile for now, in a real app this would come from an API
-  const user = {
-    name: 'Khách hàng',
+  const profileUser = auth.user || {
+    fullName: 'Khách hàng',
     email: 'khachhang@example.com',
-    phone: '0987654321',
+    phone: '',
+    address: '',
   };
-  const profileUser = auth.user || user;
 
   useEffect(() => {
     if (!token) {
@@ -31,10 +46,10 @@ const ProfilePage = () => {
       try {
         const response = await api.get('/orders/my');
         if (response.data.success) {
-          setOrders(response.data.data.items || response.data.data);
+          setOrders(response.data.data.items || response.data.data || []);
         }
       } catch (err) {
-        setError(err.response?.data?.message || 'Lỗi khi tải lịch sử đơn hàng');
+        setError(err.response?.data?.message || 'Lỗi khi tải lịch sử đơn hàng.');
       } finally {
         setLoading(false);
       }
@@ -48,107 +63,105 @@ const ProfilePage = () => {
     await auth.logout();
   };
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'PENDING': return <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">Chờ duyệt</span>;
-      case 'APPROVED': return <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">Đã duyệt</span>;
-      case 'RENTING': return <span className="px-2 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-medium">Đang thuê</span>;
-      case 'COMPLETED': return <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">Hoàn thành</span>;
-      case 'CANCELLED': return <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">Đã hủy</span>;
-      default: return <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-medium">{status}</span>;
-    }
-  };
+  const getStatusBadge = (status) => (
+    <span className={`rounded-full px-3 py-1 text-xs font-black ${statusClasses[status] || 'bg-slate-100 text-slate-700'}`}>
+      {statusLabels[status] || status}
+    </span>
+  );
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-        {/* Sidebar Profile */}
-        <div className="md:col-span-1">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div className="flex flex-col items-center mb-6">
-              <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mb-4">
-                <User size={40} />
+    <div className="min-h-screen bg-[#fff6e7] px-5 py-10 text-[#07111f]">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-10">
+          <p className="mb-3 inline-flex rounded-full bg-[#ffcc32] px-5 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#07111f]">
+            Tài khoản
+          </p>
+          <h1 className="text-4xl font-black tracking-tight">Thông tin cá nhân</h1>
+        </div>
+
+        <div className="grid gap-8 md:grid-cols-[340px_1fr]">
+          <aside className="rounded-2xl border border-[#f3c17a] bg-white/88 p-7 shadow-[0_18px_40px_rgba(126,50,13,0.10)]">
+            <div className="mb-7 flex flex-col items-center text-center">
+              <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-[#fff1d6] text-[#0f766e]">
+                <User size={42} />
               </div>
-              <h2 className="text-xl font-bold text-slate-900">{profileUser.fullName || profileUser.name}</h2>
-              <p className="text-slate-500">{profileUser.email}</p>
+              <h2 className="text-2xl font-black text-[#07111f]">{profileUser.fullName || profileUser.name}</h2>
+              <p className="mt-1 font-semibold text-[#4b3f39]">{profileUser.email}</p>
             </div>
-            
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 text-slate-600">
-                <Phone size={18} />
-                <span>{profileUser.phone || 'Chua cap nhat'}</span>
+
+            <div className="space-y-4 text-sm font-semibold text-[#4b3f39]">
+              <div className="flex items-center gap-3">
+                <Phone size={18} className="text-[#0f766e]" />
+                <span>{profileUser.phone || 'Chưa cập nhật'}</span>
               </div>
-              <div className="flex items-center gap-3 text-slate-600">
-                <MapPin size={18} />
-                <span>TP. Hồ Chí Minh</span>
+              <div className="flex items-start gap-3">
+                <MapPin size={18} className="mt-0.5 shrink-0 text-[#0f766e]" />
+                <span>{profileUser.address || 'Chưa cập nhật địa chỉ'}</span>
               </div>
             </div>
 
-            <div className="mt-8 pt-6 border-t border-gray-100">
-              <button 
+            <div className="mt-8 border-t border-[#f3c17a] pt-6">
+              <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 text-red-600 hover:text-red-700 font-medium transition-colors w-full justify-center"
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-rose-50 px-4 py-3 font-black text-rose-700 transition hover:bg-rose-100"
               >
                 <LogOut size={18} />
                 Đăng xuất
               </button>
             </div>
-          </div>
-        </div>
+          </aside>
 
-        {/* Order History */}
-        <div className="md:col-span-3">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-2">
-              <Package className="text-blue-600" />
+          <section className="rounded-2xl border border-[#f3c17a] bg-white/88 p-7 shadow-[0_18px_40px_rgba(126,50,13,0.10)]">
+            <h2 className="mb-6 flex items-center gap-3 text-2xl font-black text-[#07111f]">
+              <Package className="text-[#0f766e]" />
               Lịch sử đơn hàng
             </h2>
 
             {loading ? (
-              <div className="flex justify-center items-center py-12">
-                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="flex justify-center py-14">
+                <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#0f766e] border-t-transparent" />
               </div>
             ) : error ? (
-              <div className="text-center py-12 text-slate-500">
+              <div className="py-14 text-center font-semibold text-[#4b3f39]">
                 <p className="mb-4">{error}</p>
                 {!token && (
-                  <Link to="/login" className="text-blue-600 font-medium hover:underline">
+                  <Link to="/login" className="font-black text-[#0f766e] hover:text-[#7f1d1d]">
                     Đăng nhập ngay
                   </Link>
                 )}
               </div>
             ) : orders.length === 0 ? (
-              <div className="text-center py-12 text-slate-500">
+              <div className="rounded-xl border-2 border-dashed border-[#f3c17a] bg-[#fff8e7] p-10 text-center font-semibold text-[#4b3f39]">
                 Bạn chưa có đơn hàng nào.
                 <br />
-                <Link to="/" className="text-blue-600 font-medium hover:underline mt-2 inline-block">
+                <Link to="/catalog" className="mt-3 inline-block font-black text-[#0f766e] hover:text-[#7f1d1d]">
                   Tiếp tục mua sắm
                 </Link>
               </div>
             ) : (
               <div className="space-y-4">
                 {orders.map((order) => (
-                  <div key={order.id} className="border border-gray-100 rounded-xl p-4 hover:shadow-md transition-shadow">
-                    <div className="flex flex-wrap justify-between items-start mb-4 gap-4">
+                  <div key={order.id} className="rounded-xl border border-[#f3c17a] bg-[#fffdf8] p-5 transition hover:shadow-md">
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
                       <div>
-                        <span className="font-bold text-slate-900">Mã đơn: #{order.id}</span>
-                        <p className="text-sm text-slate-500 mt-1">
+                        <span className="font-black text-[#07111f]">Mã đơn: #{order.id}</span>
+                        <p className="mt-1 text-sm font-semibold text-[#4b3f39]">
                           Ngày đặt: {new Date(order.created_at).toLocaleDateString('vi-VN')}
                         </p>
                       </div>
                       {getStatusBadge(order.status)}
                     </div>
-                    
-                    <div className="border-t border-gray-50 pt-4 mt-4 flex flex-wrap justify-between items-center gap-4">
+
+                    <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[#f3c17a] pt-4">
                       <div>
-                        <p className="text-sm text-slate-500">Tổng tiền</p>
-                        <p className="font-bold text-blue-600 text-lg">
+                        <p className="text-sm font-semibold text-[#4b3f39]">Tổng tiền</p>
+                        <p className="text-lg font-black text-[#0f766e]">
                           {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.grand_total)}
                         </p>
                       </div>
-                      <Link 
-                        to={`/order-success/${order.id}`} 
-                        className="px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium rounded-lg transition-colors text-sm"
+                      <Link
+                        to={`/order-success/${order.id}`}
+                        className="rounded-2xl bg-[#083344] px-5 py-2.5 text-sm font-black text-white transition hover:bg-[#7f1d1d]"
                       >
                         Xem chi tiết
                       </Link>
@@ -157,7 +170,7 @@ const ProfilePage = () => {
                 ))}
               </div>
             )}
-          </div>
+          </section>
         </div>
       </div>
     </div>

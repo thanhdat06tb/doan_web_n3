@@ -18,6 +18,18 @@ INSERT INTO users (full_name, email, phone, address, password_hash, role) VALUES
 -- ───────────────────────────────────────
 -- CATEGORIES: 4 danh mục
 -- ───────────────────────────────────────
+UPDATE users
+SET full_name = 'Admin He Thong',
+    email = 'thanhdat06@08.vn',
+    phone = '0369038160',
+    address = 'Hung Yen',
+    password_hash = '$2a$10$MGlLk4hlJTXGh.NMDWpIg.6zVmcZbcWXYKz9//r6mqpHFDpoREo2a',
+    role = 'ADMIN',
+    is_active = 1
+WHERE role = 'ADMIN';
+
+DELETE FROM users WHERE role = 'CUSTOMER';
+
 INSERT INTO categories (name, description) VALUES
 ('Thiết bị xây dựng', 'Máy khoan, máy cưa, máy mài, máy trộn bê tông và các thiết bị xây dựng chuyên nghiệp'),
 ('Quần áo bảo hộ', 'Áo phản quang, bộ quần áo bảo hộ và trang phục an toàn cho công trình'),

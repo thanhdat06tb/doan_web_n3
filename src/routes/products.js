@@ -82,7 +82,7 @@ router.get('/:id', validateRequest({ params: productIdSchema }), (req, res) => {
           JOIN orders o ON od.order_id = o.id
           WHERE od.product_id = ?
             AND od.type = 'RENT'
-            AND o.status IN ('APPROVED', 'RENTING')
+            AND o.status IN ('PENDING', 'APPROVED', 'RENTING')
             AND od.start_date <= ?
             AND od.end_date >= ?
         `)

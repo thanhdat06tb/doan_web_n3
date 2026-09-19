@@ -16,6 +16,9 @@ ON orders(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_status
 ON orders(status);
 
+CREATE INDEX IF NOT EXISTS idx_orders_payment_status
+ON orders(payment_status, payment_method);
+
 -- Index cho tìm kiếm sản phẩm theo danh mục
 CREATE INDEX IF NOT EXISTS idx_products_category
 ON products(category_id, is_active);

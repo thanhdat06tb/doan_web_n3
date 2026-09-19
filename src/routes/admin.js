@@ -16,9 +16,31 @@ const idParamSchema = z.object({
   id: z.string().regex(/^\d+$/, 'ID phải là số.').transform(Number),
 });
 
+const optionalDateQuery = z.union([
+  z.literal(''),
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+]).optional().default('');
+
+const exportParamSchema = z.object({
+  type: z.enum(['order-items', 'orders', 'product-performance']),
+});
+
+const exportQuerySchema = z.object({
+  from: optionalDateQuery,
+  to: optionalDateQuery,
+  status: z.enum(['ALL', 'PENDING', 'APPROVED', 'RENTING', 'COMPLETED', 'CANCELLED']).optional().default('ALL'),
+});
+
+const dashboardAnalyticsQuerySchema = z.object({
+  period: z.enum(['7d', '30d', '12m']).optional().default('30d'),
+  categoryId: z.union([z.literal('ALL'), z.string().regex(/^\d+$/)]).optional().default('ALL'),
+  status: z.enum(['ALL', 'PENDING', 'APPROVED', 'RENTING', 'COMPLETED', 'CANCELLED']).optional().default('ALL'),
+});
+
 const adminOrdersQuerySchema = z.object({
   status: z.enum(['ALL', 'PENDING', 'APPROVED', 'RENTING', 'COMPLETED', 'CANCELLED']).optional().default('ALL'),
-  search: z.string().trim().max(100, 'Từ khóa tìm kiếm tối đa 100 ký tự.').optional().default(''),
+  search: z.string().trim().max(100).optional().default(''),
+  date: optionalDateQuery,
   page: z.string().regex(/^\d+$/).transform(Number).optional().default('1'),
   limit: z.string().regex(/^\d+$/).transform(Number).optional().default('10'),
 });
@@ -35,6 +57,13 @@ const updateStatusSchema = z.object({
   status: z.enum(['APPROVED', 'RENTING', 'CANCELLED', 'COMPLETED'], {
     errorMap: () => ({ message: 'Trạng thái không hợp lệ.' }),
   }),
+});
+
+const reviewPaymentSchema = z.object({
+  paymentStatus: z.enum(['PAID', 'REJECTED', 'PENDING_REVIEW'], {
+    errorMap: () => ({ message: 'Trạng thái thanh toán không hợp lệ.' }),
+  }),
+  note: z.string().max(500).optional().default(''),
 });
 
 const itemConditionSchema = z.object({
@@ -62,6 +91,7 @@ const createProductSchema = z.object({
   deposit_amount: z.number().min(0).optional().default(0),
   stock_quantity: z.number().int().min(0).optional().default(0),
   image_url: z.string().max(1000).optional().default(''),
+  images: z.array(z.string().trim().min(1).max(1000)).max(8).optional().default([]),
 }).refine(
   (product) => product.price_sell > 0 || product.price_rent_per_day > 0,
   { message: 'Sản phẩm phải có giá bán hoặc giá thuê.' }
@@ -130,6 +160,17 @@ router.get('/dashboard/product-utilization', (req, res) => {
   }
 });
 
+router.get('/dashboard/analytics', validateRequest({ query: dashboardAnalyticsQuerySchema }), (req, res) => {
+  try {
+    const data = adminService.getDashboardAnalytics(req.query);
+    res.json(successResponse(data));
+  } catch (error) {
+    res.status(error.status || 500).json(
+      errorResponse(error.code || 'INTERNAL_ERROR', error.message || 'Khong the lay du lieu bieu do dashboard.')
+    );
+  }
+});
+
 /**
  * GET /api/admin/dashboard/overdue-orders
  * Danh sách đơn đang thuê nhưng đã quá hạn trả
@@ -146,19 +187,51 @@ router.get('/dashboard/overdue-orders', (req, res) => {
 });
 
 /**
+ * GET /api/admin/dashboard/low-stock
+ * Danh sach thiet bi sap het hang
+ */
+router.get('/dashboard/low-stock', (req, res) => {
+  try {
+    const data = adminService.getLowStockProducts({ limit: 10, threshold: 3 });
+    res.json(successResponse(data));
+  } catch (error) {
+    res.status(error.status || 500).json(
+      errorResponse(error.code || 'INTERNAL_ERROR', error.message)
+    );
+  }
+});
+
+/**
  * GET /api/admin/orders?status=&search=&page=1&limit=10
  * Danh sách đơn hàng phía Admin (phân trang + lọc status + search)
  */
+router.get('/export/:type.csv', validateRequest({ params: exportParamSchema, query: exportQuerySchema }), (req, res) => {
+  try {
+    const { filename, content, reportFile } = adminService.exportAdminDataset(req.params.type, req.query);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    if (reportFile?.relativePath) {
+      res.setHeader('X-Report-Path', reportFile.relativePath);
+    }
+    res.send(content);
+  } catch (error) {
+    res.status(error.status || 500).json(
+      errorResponse(error.code || 'INTERNAL_ERROR', error.message || 'Khong the xuat du lieu.')
+    );
+  }
+});
+
 router.get('/orders', validateRequest({ query: adminOrdersQuerySchema }), (req, res) => {
   try {
-    const { status, search, page, limit } = req.query;
+    const { status, search, date, page, limit } = req.query;
     const result = adminService.getAdminOrders({
       status,
       search,
+      date,
       page: parseInt(page, 10) || 1,
       limit: parseInt(limit, 10) || 10,
     });
-    res.json(successResponse({ items: result.orders, pagination: result.pagination }));
+    res.json(successResponse({ items: result.orders, pagination: result.pagination, summary: result.summary }));
   } catch (error) {
     res.status(error.status || 500).json(
       errorResponse(error.code || 'INTERNAL_ERROR', error.message)
@@ -180,6 +253,21 @@ router.get('/orders/:id', validateRequest({ params: idParamSchema }), (req, res)
     );
   }
 });
+
+router.put(
+  '/orders/:id/payment',
+  validateRequest({ params: idParamSchema, body: reviewPaymentSchema }),
+  (req, res) => {
+    try {
+      const order = adminService.reviewOrderPayment(req.params.id, req.body, req.user.id);
+      res.json(successResponse(order, 'Đã cập nhật trạng thái thanh toán.'));
+    } catch (error) {
+      res.status(error.status || 500).json(
+        errorResponse(error.code || 'INTERNAL_ERROR', error.message)
+      );
+    }
+  }
+);
 
 /**
  * PUT /api/admin/orders/:id/status

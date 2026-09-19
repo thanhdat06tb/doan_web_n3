@@ -8,6 +8,7 @@ import { X, Trash2, ShoppingBag } from 'lucide-react';
 const CartDrawer = ({ isOpen, onClose }) => {
   const { cartItems, totals, removeFromCart } = useCart();
   const navigate = useNavigate();
+  const hasDeposit = totals.totalDeposit > 0;
 
   if (!isOpen) return null;
 
@@ -112,14 +113,19 @@ const CartDrawer = ({ isOpen, onClose }) => {
                 <span className="font-medium">{formatCurrency(totals.totalGoods)}</span>
               </div>
               <div className="flex justify-between text-orange-600">
-                <span>Tổng tiền cọc:</span>
+                <span>Tiền cọc hoàn lại:</span>
                 <span className="font-medium">{formatCurrency(totals.totalDeposit)}</span>
               </div>
               <hr className="border-gray-300 my-1" />
               <div className="flex justify-between text-lg font-bold text-gray-900">
-                <span>Tổng thanh toán:</span>
+                <span>{hasDeposit ? 'Tạm thu khi đặt:' : 'Tổng thanh toán:'}</span>
                 <span>{formatCurrency(totals.grandTotal)}</span>
               </div>
+              {hasDeposit && (
+                <p className="text-xs font-semibold text-gray-500">
+                  Tạm thu = tiền thuê/mua + tiền cọc. Cọc được hoàn lại khi trả thiết bị đúng hạn và nguyên vẹn.
+                </p>
+              )}
             </div>
             
             <button 

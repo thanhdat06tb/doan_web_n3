@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   Edit3,
@@ -35,6 +35,8 @@ const ProductManagementPage = () => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [galleryImages, setGalleryImages] = useState([]);
+  const [galleryUrl, setGalleryUrl] = useState('');
 
   const {
     register,
@@ -55,7 +57,7 @@ const ProductManagementPage = () => {
     ...(filters.category ? { category: filters.category } : {}),
   }), [filters]);
 
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
       const response = await api.get('/admin/products', { params: queryParams });
@@ -68,7 +70,7 @@ const ProductManagementPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [queryParams]);
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -84,7 +86,7 @@ const ProductManagementPage = () => {
 
   useEffect(() => {
     fetchProducts();
-  }, [queryParams]);
+  }, [fetchProducts]);
 
   const openEditModal = async (productId) => {
     setMessage(null);
@@ -103,6 +105,10 @@ const ProductManagementPage = () => {
           stock_quantity: product.stock_quantity || 0,
           image_url: product.image_url || '',
         });
+        const images = Array.isArray(product.images)
+          ? product.images.map((image) => image.image_url).filter(Boolean)
+          : [];
+        setGalleryImages([...new Set([product.image_url, ...images].filter(Boolean))]);
       }
     } catch (error) {
       setMessage({ type: 'error', text: error.response?.data?.error?.message || 'Không thể mở sản phẩm.' });
@@ -111,6 +117,8 @@ const ProductManagementPage = () => {
 
   const closeEditModal = () => {
     setEditingProduct(null);
+    setGalleryImages([]);
+    setGalleryUrl('');
     reset(defaultFormValues);
   };
 
@@ -118,6 +126,7 @@ const ProductManagementPage = () => {
     if (!editingProduct) return;
     setSaving(true);
     setMessage(null);
+    const nextGalleryImages = [...new Set([data.image_url, ...galleryImages].filter(Boolean))].slice(0, 8);
 
     const payload = {
       category_id: Number(data.category_id),
@@ -127,7 +136,8 @@ const ProductManagementPage = () => {
       price_rent_per_day: Number(data.price_rent_per_day || 0),
       deposit_amount: Number(data.deposit_amount || 0),
       stock_quantity: Number(data.stock_quantity || 0),
-      image_url: data.image_url || '',
+      image_url: nextGalleryImages[0] || '',
+      images: nextGalleryImages,
     };
 
     try {
@@ -178,6 +188,7 @@ const ProductManagementPage = () => {
         });
         if (response.data.success) {
           setValue('image_url', response.data.data.imageUrl, { shouldDirty: true });
+          setGalleryImages((current) => [...new Set([...current, response.data.data.imageUrl])]);
           setMessage({ type: 'success', text: 'Upload ảnh thành công, URL đã được điền vào form.' });
         }
       } catch (error) {
@@ -188,6 +199,27 @@ const ProductManagementPage = () => {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const addGalleryImage = () => {
+    const nextUrl = galleryUrl.trim();
+    if (!nextUrl) return;
+    setGalleryImages((current) => [...new Set([...current, nextUrl])].slice(0, 8));
+    if (!previewImage) setValue('image_url', nextUrl, { shouldDirty: true });
+    setGalleryUrl('');
+  };
+
+  const removeGalleryImage = (imageUrl) => {
+    setGalleryImages((current) => {
+      const nextImages = current.filter((item) => item !== imageUrl);
+      setValue('image_url', nextImages[0] || '', { shouldDirty: true });
+      return nextImages;
+    });
+  };
+
+  const makePrimaryImage = (imageUrl) => {
+    setGalleryImages((current) => [imageUrl, ...current.filter((item) => item !== imageUrl)]);
+    setValue('image_url', imageUrl, { shouldDirty: true });
   };
 
   return (
@@ -430,6 +462,72 @@ const ProductManagementPage = () => {
                     className="w-full rounded-xl border border-slate-800 bg-slate-900 px-4 py-2 text-sm text-white outline-none focus:border-blue-500"
                   />
                 </label>
+                <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-black text-white">Gallery cho slider</h3>
+                      <p className="text-xs text-slate-500">Anh dau tien se la anh dai dien va anh chinh.</p>
+                    </div>
+                    <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-bold text-slate-300">
+                      {galleryImages.length}/8 anh
+                    </span>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      value={galleryUrl}
+                      onChange={(event) => setGalleryUrl(event.target.value)}
+                      placeholder="/images/goc-chup-khac.png"
+                      className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-white outline-none focus:border-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={addGalleryImage}
+                      disabled={galleryImages.length >= 8}
+                      className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white hover:bg-blue-500 disabled:opacity-50"
+                    >
+                      Them
+                    </button>
+                  </div>
+
+                  {galleryImages.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                      {galleryImages.map((imageUrl, index) => (
+                        <div key={imageUrl} className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950">
+                          <div className="relative h-24">
+                            <img src={imageUrl} alt={`Gallery ${index + 1}`} className="h-full w-full object-contain p-2" />
+                            {index === 0 && (
+                              <span className="absolute left-2 top-2 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-black text-white">
+                                Chinh
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 border-t border-slate-800 p-1">
+                            <button
+                              type="button"
+                              onClick={() => makePrimaryImage(imageUrl)}
+                              disabled={index === 0}
+                              className="rounded-lg px-2 py-1 text-[11px] font-bold text-blue-200 hover:bg-blue-500/20 disabled:text-slate-600"
+                            >
+                              Chon chinh
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeGalleryImage(imageUrl)}
+                              className="rounded-lg px-2 py-1 text-[11px] font-bold text-rose-200 hover:bg-rose-500/20"
+                            >
+                              Xoa
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-700 px-4 py-6 text-center text-sm text-slate-500">
+                      Chua co anh trong gallery.
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-4">

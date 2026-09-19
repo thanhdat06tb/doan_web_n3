@@ -229,13 +229,14 @@ const LiveConfigurator = ({ product }) => {
             )}
             <div className="my-3 border-t border-blue-200" />
             <div className="flex justify-between gap-4 text-lg font-black text-blue-950">
-              <span>Tổng cần chuẩn bị</span>
+              <span>{type === 'RENT' ? 'Tạm thu khi đặt' : 'Tổng thanh toán'}</span>
               <span>{formatCurrency(grandTotal)}</span>
             </div>
             {type === 'RENT' && (
-              <p className="pt-1 text-xs font-semibold text-blue-700">
-                Tiền cọc sẽ được hoàn trả sau khi thiết bị được trả đúng hạn và nguyên vẹn.
-              </p>
+              <div className="space-y-1 pt-1 text-xs font-semibold text-blue-700">
+                <p>Công thức: tiền thuê {formatCurrency(rentTotal)} + tiền cọc {formatCurrency(depositTotal)} = {formatCurrency(grandTotal)}.</p>
+                <p>Tiền cọc sẽ được hoàn trả sau khi thiết bị được trả đúng hạn và nguyên vẹn.</p>
+              </div>
             )}
           </div>
         </section>

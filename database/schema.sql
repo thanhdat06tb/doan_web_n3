@@ -97,6 +97,12 @@ CREATE TABLE IF NOT EXISTS orders (
                         CHECK (status IN ('PENDING', 'APPROVED', 'RENTING', 'COMPLETED', 'CANCELLED')),
     payment_method      TEXT    NOT NULL DEFAULT 'CASH'
                         CHECK (payment_method IN ('CASH', 'TRANSFER')),
+    payment_status      TEXT    NOT NULL DEFAULT 'UNPAID'
+                        CHECK (payment_status IN ('UNPAID', 'PENDING_REVIEW', 'PAID', 'REJECTED')),
+    payment_proof_url   TEXT    DEFAULT '',
+    payment_note        TEXT    DEFAULT '',
+    payment_confirmed_at TEXT   DEFAULT NULL,
+    payment_confirmed_by INTEGER DEFAULT NULL,
     shipping_name       TEXT    NOT NULL,
     shipping_phone      TEXT    NOT NULL,
     shipping_address    TEXT    NOT NULL,

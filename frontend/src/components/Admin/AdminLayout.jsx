@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, Navigate, NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, PackagePlus, ShoppingBag, ArrowLeft, Shield, Bell, Store, Boxes } from 'lucide-react';
+import { LayoutDashboard, PackagePlus, ShoppingBag, ArrowLeft, Shield, Bell, Store, Boxes, Download } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 const AdminLayout = () => {
@@ -98,6 +98,19 @@ const AdminLayout = () => {
               <PackagePlus className="w-5 h-5" />
               Thêm sản phẩm
             </NavLink>
+            <NavLink
+              to="/admin/export"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                    : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                }`
+              }
+            >
+              <Download className="w-5 h-5" />
+              Xuất CSV
+            </NavLink>
           </nav>
         </div>
 
@@ -168,6 +181,17 @@ const AdminLayout = () => {
               >
                 <PackagePlus className="h-4 w-4" />
                 Thêm sản phẩm
+              </NavLink>
+              <NavLink
+                to="/admin/export"
+                className={({ isActive }) =>
+                  `inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+                    isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                  }`
+                }
+              >
+                <Download className="h-4 w-4" />
+                Xuất CSV
               </NavLink>
               <Link
                 to="/"

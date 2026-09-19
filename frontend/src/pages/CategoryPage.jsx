@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { formatCurrency } from '../utils/formatters';
-import { Filter, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Filter, SearchX, X } from 'lucide-react';
 import api from '../utils/api';
+import { formatCurrency } from '../utils/formatters';
 import fallbackImage from '../assets/hero.png';
 
 const categoryMap = {
@@ -13,10 +13,10 @@ const categoryMap = {
 };
 
 const categoryNameMap = {
-  'thiet-bi-xay-dung': 'Thiết Bị Xây Dựng',
-  'quan-ao-bao-ho': 'Quần Áo Bảo Hộ',
-  'giay-dep': 'Giày Dép Chuyên Dụng',
-  'may-quay-phim': 'Thiết Bị Quay Phim',
+  'thiet-bi-xay-dung': 'Thiết bị xây dựng',
+  'quan-ao-bao-ho': 'Quần áo bảo hộ',
+  'giay-dep': 'Giày dép chuyên dụng',
+  'may-quay-phim': 'Thiết bị quay phim',
 };
 
 const CategoryPage = () => {
@@ -31,7 +31,9 @@ const CategoryPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const categoryName = slug ? categoryNameMap[slug] : (searchQuery ? `Kết quả tìm kiếm cho: "${searchQuery}"` : 'Tất cả sản phẩm');
+  const categoryName = slug
+    ? categoryNameMap[slug]
+    : (searchQuery ? `Kết quả tìm kiếm cho: "${searchQuery}"` : 'Tất cả sản phẩm');
   const categoryId = slug ? categoryMap[slug] : null;
 
   useEffect(() => {
@@ -39,16 +41,13 @@ const CategoryPage = () => {
       setLoading(true);
       setError(null);
       try {
-        const params = {
-          limit: 20,
-          type: currentType
-        };
+        const params = { limit: 20, type: currentType };
         if (categoryId) params.category = categoryId;
         if (searchQuery) params.search = searchQuery;
 
         const response = await api.get('/products', { params });
         if (response.data.success) {
-          setProducts(response.data.data.items);
+          setProducts(response.data.data.items || []);
         }
       } catch (err) {
         console.error('Error fetching products:', err);
@@ -71,104 +70,116 @@ const CategoryPage = () => {
     navigate(`${location.pathname}?${searchParams.toString()}`);
   };
 
-  return (
-    <div className="container mx-auto px-4 py-12 max-w-6xl">
-      <div className="mb-10 text-center">
-        <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">{categoryName}</h1>
-        {searchQuery && (
-          <button onClick={clearSearch} className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-full mb-4">
-            Xóa tìm kiếm <X size={14} />
-          </button>
-        )}
-        <p className="text-slate-300 max-w-2xl mx-auto">
-          Khám phá các thiết bị, dụng cụ và đồ chuyên dụng chất lượng cao. Chúng tôi cung cấp cả dịch vụ bán và cho thuê để đáp ứng mọi nhu cầu của bạn.
-        </p>
-      </div>
+  const filters = [
+    ['all', 'Tất cả'],
+    ['buy', 'Chỉ bán'],
+    ['rent', 'Chỉ cho thuê'],
+  ];
 
-      <div className="flex flex-col md:flex-row gap-8">
-        {/* Sidebar Filter */}
-        <div className="w-full md:w-64 shrink-0">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sticky top-24">
-            <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Filter size={18} className="text-blue-600" /> Bộ lọc
+  return (
+    <div className="min-h-screen bg-[#f8f3ea] text-[#07111f]">
+      <section className="relative overflow-hidden border-b border-[#d8c7ad] bg-[#fff7ed] px-5 py-14">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_18%,rgba(255,255,255,0.92),transparent_24%),radial-gradient(circle_at_80%_5%,rgba(249,115,22,0.18),transparent_28%),radial-gradient(circle_at_85%_70%,rgba(15,118,110,0.16),transparent_26%)]" />
+        <div className="absolute left-8 top-4 hidden text-[7rem] font-black italic leading-none text-[#9a3412]/10 md:block">
+          GearRental
+        </div>
+        <div className="relative mx-auto max-w-6xl text-center">
+          <p className="mx-auto mb-4 inline-flex rounded-full bg-[#ffcc32] px-5 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#07111f] shadow-sm">
+            Bộ sưu tập thiết bị
+          </p>
+          <h1 className="text-4xl font-black tracking-tight text-[#07111f] md:text-5xl">{categoryName}</h1>
+          {searchQuery && (
+            <button
+              onClick={clearSearch}
+              className="mt-5 inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-sm font-black text-[#083344] shadow-sm transition hover:bg-white hover:text-[#7f1d1d]"
+            >
+              Xóa tìm kiếm <X size={15} />
+            </button>
+          )}
+          <p className="mx-auto mt-5 max-w-2xl text-base font-semibold leading-7 text-[#3b332f]">
+            Khám phá thiết bị, dụng cụ và đồ chuyên dụng chất lượng cao. Chọn mua hoặc thuê theo ngày với thông tin giá rõ ràng.
+          </p>
+        </div>
+      </section>
+
+      <div className="mx-auto flex max-w-7xl flex-col gap-8 px-5 py-12 md:flex-row">
+        <aside className="w-full shrink-0 md:w-72">
+          <div className="sticky top-28 rounded-2xl border border-[#e8ded0] bg-white/92 p-6 shadow-[0_14px_34px_rgba(8,51,68,0.08)] backdrop-blur">
+            <h3 className="mb-5 flex items-center gap-2 text-lg font-black text-[#07111f]">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#083344] text-white">
+                <Filter size={18} />
+              </span>
+              Bộ lọc
             </h3>
-            
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-sm font-semibold text-slate-700 mb-2">Loại hình</h4>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input 
-                      type="radio" 
-                      name="type" 
-                      checked={currentType === 'all'} 
-                      onChange={() => handleTypeChange('all')}
-                      className="text-blue-600"
+
+            <div>
+              <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-[#0f766e]">Loại hình</h4>
+              <div className="grid gap-2">
+                {filters.map(([value, label]) => (
+                  <label
+                    key={value}
+                    className={`flex cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 text-sm font-black transition ${
+                      currentType === value
+                        ? 'bg-[#083344] text-white shadow-sm'
+                        : 'bg-[#f8fafc] text-[#4b3f39] hover:bg-[#fff7ed]'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="type"
+                      checked={currentType === value}
+                      onChange={() => handleTypeChange(value)}
+                      className="text-[#0f766e] focus:ring-[#0f766e]"
                     />
-                    <span className="text-slate-600 text-sm">Tất cả</span>
+                    <span>{label}</span>
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input 
-                      type="radio" 
-                      name="type" 
-                      checked={currentType === 'buy'} 
-                      onChange={() => handleTypeChange('buy')}
-                      className="text-blue-600"
-                    />
-                    <span className="text-slate-600 text-sm">Chỉ bán</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input 
-                      type="radio" 
-                      name="type" 
-                      checked={currentType === 'rent'} 
-                      onChange={() => handleTypeChange('rent')}
-                      className="text-blue-600"
-                    />
-                    <span className="text-slate-600 text-sm">Chỉ cho thuê</span>
-                  </label>
-                </div>
+                ))}
               </div>
             </div>
           </div>
-        </div>
+        </aside>
 
-        {/* Product Grid */}
-        <div className="flex-1">
+        <main className="flex-1">
           {loading ? (
-            <div className="flex justify-center items-center py-20">
-              <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <div className="flex justify-center py-24">
+              <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#0f766e] border-t-transparent" />
             </div>
           ) : error ? (
-            <div className="text-center py-20 text-red-500 bg-red-50 rounded-xl">
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-10 text-center font-bold text-rose-700">
               {error}
             </div>
           ) : products.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {products.map(product => {
-                // Determine images, backend returns image_url as string or might be array if populated
+            <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 lg:grid-cols-3">
+              {products.map((product) => {
                 const imageUrl = product.image_url || fallbackImage;
-                
+
                 return (
-                  <Link key={product.id} to={`/products/${product.id}`} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-xl transition-all group flex flex-col">
-                    <div className="aspect-[4/3] bg-slate-100 overflow-hidden relative">
-                      <img 
-                        src={imageUrl} 
-                        alt={product.name} 
+                  <Link
+                    key={product.id}
+                    to={`/products/${product.id}`}
+                    className="group flex flex-col overflow-hidden rounded-2xl border border-[#e8ded0] bg-white shadow-[0_14px_34px_rgba(8,51,68,0.08)] transition duration-300 hover:-translate-y-1 hover:border-[#0f766e]/50 hover:shadow-[0_22px_48px_rgba(8,51,68,0.13)]"
+                  >
+                    <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-b-2xl bg-[#f8fafc] p-5">
+                      <img
+                        src={imageUrl}
+                        alt={product.name}
                         onError={(event) => { event.currentTarget.src = fallbackImage; }}
-                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        className="h-full w-full object-contain transition duration-500 group-hover:scale-105"
                       />
                     </div>
-                    <div className="p-5">
-                      <h3 className="font-bold text-slate-900 mb-2 line-clamp-2 min-h-[3rem] group-hover:text-blue-600 transition-colors">
+                    <div className="flex flex-1 flex-col p-5">
+                      <p className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-[#0f766e]">
+                        {product.category_name || 'Thiết bị'}
+                      </p>
+                      <h3 className="min-h-[3.2rem] text-xl font-black leading-6 text-[#07111f] transition group-hover:text-[#9a3412]">
                         {product.name}
                       </h3>
-                      <div className="space-y-1">
+                      <div className="mt-5 space-y-2 text-sm font-semibold text-[#493b36]">
                         {product.price_sell > 0 && (
-                          <p className="text-sm text-slate-600">Mua: <span className="font-semibold text-blue-700">{formatCurrency(product.price_sell)}</span></p>
+                          <p>Mua: <span className="font-black text-[#1d4ed8]">{formatCurrency(product.price_sell)}</span></p>
                         )}
                         {product.price_rent_per_day > 0 && (
-                          <p className="text-sm text-slate-600">Thuê: <span className="font-semibold text-orange-600">{formatCurrency(product.price_rent_per_day)}/ngày</span></p>
+                          <p>Thuê: <span className="font-black text-[#c2410c]">{formatCurrency(product.price_rent_per_day)}/ngày</span></p>
                         )}
                       </div>
                     </div>
@@ -177,25 +188,15 @@ const CategoryPage = () => {
               })}
             </div>
           ) : (
-            <div className="text-center py-20 text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-              <Package size={48} className="mx-auto mb-4 text-slate-300" />
-              Không tìm thấy sản phẩm nào phù hợp với bộ lọc hiện tại.
+            <div className="rounded-2xl border-2 border-dashed border-[#d8c7ad] bg-white/80 p-12 text-center text-[#4b3f39]">
+              <SearchX size={52} className="mx-auto mb-4 text-[#c2410c]" />
+              <p className="font-black">Không tìm thấy sản phẩm phù hợp với bộ lọc hiện tại.</p>
             </div>
           )}
-        </div>
+        </main>
       </div>
     </div>
   );
 };
-
-// Add missing icon
-const Package = ({ size, className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
-    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-    <line x1="12" y1="22.08" x2="12" y2="12"></line>
-  </svg>
-);
 
 export default CategoryPage;

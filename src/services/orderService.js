@@ -4,10 +4,33 @@
 // ═══════════════════════════════════════════════════════════════
 
 const { getDatabase } = require('../database/connection');
+const { ensureOrderPaymentFields } = require('../database/migrations');
 const { ERROR_CODES, TRANSACTION_TYPE } = require('../constants/errorCodes');
 const { checkProductAvailability } = require('./availabilityService');
 const { calculateDays } = require('../utils/dateUtils');
 const logger = require('../utils/logger');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+function normalizeCartItems(cartItems) {
+  const merged = new Map();
+
+  for (const item of cartItems) {
+    const key = item.type === TRANSACTION_TYPE.RENT
+      ? `${item.productId}|${item.type}|${item.startDate}|${item.endDate}`
+      : `${item.productId}|${item.type}`;
+
+    if (!merged.has(key)) {
+      merged.set(key, { ...item });
+      continue;
+    }
+
+    merged.get(key).quantity += item.quantity;
+  }
+
+  return [...merged.values()];
+}
 
 /**
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -28,11 +51,14 @@ const logger = require('../utils/logger');
  */
 function createOrder(userId, cartItems, shippingInfo) {
   const db = getDatabase();
+  ensureOrderPaymentFields(db);
 
   // ━━━ Kiểm tra giỏ hàng không rỗng ━━━
   if (!cartItems || cartItems.length === 0) {
     throw ERROR_CODES.EMPTY_CART;
   }
+
+  const normalizedCartItems = normalizeCartItems(cartItems);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // TRANSACTION — BEGIN IMMEDIATE
@@ -48,7 +74,7 @@ function createOrder(userId, cartItems, shippingInfo) {
     // BƯỚC 1: VALIDATE TOÀN BỘ TRƯỚC KHI INSERT
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    for (const item of cartItems) {
+    for (const item of normalizedCartItems) {
       // Lấy thông tin sản phẩm từ DB (KHÔNG tin price từ FE)
       const product = db
         .prepare(`
@@ -217,8 +243,8 @@ function createOrder(userId, cartItems, shippingInfo) {
     const insertOrder = db.prepare(`
       INSERT INTO orders (
         user_id, total_amount, total_deposit, grand_total,
-        status, payment_method, shipping_name, shipping_phone, shipping_address, note
-      ) VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?)
+        status, payment_method, payment_status, shipping_name, shipping_phone, shipping_address, note
+      ) VALUES (?, ?, ?, ?, 'PENDING', ?, 'UNPAID', ?, ?, ?, ?)
     `);
 
     const orderResult = insertOrder.run(
@@ -259,6 +285,14 @@ function createOrder(userId, cartItems, shippingInfo) {
         item.subtotal,
         item.depositAmount
       );
+
+      if (item.type === 'BUY') {
+        db.prepare(`
+          UPDATE products
+          SET stock_quantity = stock_quantity - ?, updated_at = datetime('now', 'localtime')
+          WHERE id = ?
+        `).run(item.quantity, item.productId);
+      }
     }
 
     // ━━━ Transaction tự COMMIT khi hàm kết thúc bình thường ━━━
@@ -316,7 +350,7 @@ function createOrder(userId, cartItems, shippingInfo) {
       // Log lỗi
       logger.error('CREATE_ORDER_FAILED', {
         userId,
-        cartItems,
+        cartItems: normalizedCartItems,
         error: error.message || error.code || 'Unknown error',
       });
 
@@ -350,6 +384,7 @@ function createOrder(userId, cartItems, shippingInfo) {
  */
 function getOrderById(orderId, userId) {
   const db = getDatabase();
+  ensureOrderPaymentFields(db);
 
   // Lấy đơn hàng — WHERE user_id = userId để chống IDOR
   const order = db
@@ -358,6 +393,8 @@ function getOrderById(orderId, userId) {
         o.id, o.user_id, o.total_amount, o.total_deposit, o.grand_total,
         o.status, o.payment_method, o.shipping_name, o.shipping_phone,
         o.shipping_address, o.note, o.return_date, o.return_note,
+        o.payment_status, o.payment_proof_url, o.payment_note,
+        o.payment_confirmed_at, o.payment_confirmed_by,
         o.created_at, o.updated_at
       FROM orders o
       WHERE o.id = ? AND o.user_id = ?
@@ -399,6 +436,7 @@ function getOrderById(orderId, userId) {
  */
 function getUserOrders(userId, page = 1, limit = 10) {
   const db = getDatabase();
+  ensureOrderPaymentFields(db);
 
   // Đếm tổng số đơn
   const { count: totalItems } = db
@@ -413,7 +451,7 @@ function getUserOrders(userId, page = 1, limit = 10) {
     .prepare(`
       SELECT 
         o.id, o.total_amount, o.total_deposit, o.grand_total,
-        o.status, o.payment_method, o.created_at, o.updated_at
+        o.status, o.payment_method, o.payment_status, o.created_at, o.updated_at
       FROM orders o
       WHERE o.user_id = ?
       ORDER BY o.created_at DESC
@@ -456,4 +494,79 @@ function getUserOrders(userId, page = 1, limit = 10) {
   };
 }
 
-module.exports = { createOrder, getOrderById, getUserOrders };
+function savePaymentProofFile({ fileName, dataUrl, orderId }) {
+  const match = /^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i.exec(dataUrl || '');
+  if (!match) {
+    throw {
+      ...ERROR_CODES.VALIDATION_ERROR,
+      message: 'Biên lai không hợp lệ. Chỉ hỗ trợ PNG, JPG, JPEG hoặc WEBP.',
+    };
+  }
+
+  const extension = match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase();
+  const safeBaseName = path
+    .basename(fileName || `payment-proof-${orderId}`)
+    .replace(/\.[^.]+$/, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9-_]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase() || `payment-proof-${orderId}`;
+
+  const finalName = `${safeBaseName}-${orderId}-${Date.now()}.${extension}`;
+  const targetDir = process.env.NODE_ENV === 'test'
+    ? path.resolve(process.env.PAYMENT_PROOF_DIR || path.join(os.tmpdir(), 'rental-payment-proofs'))
+    : path.resolve(__dirname, '../../frontend/public/payment-proofs');
+  const targetPath = path.join(targetDir, finalName);
+  const buffer = Buffer.from(match[2], 'base64');
+
+  if (buffer.length > 5 * 1024 * 1024) {
+    throw {
+      ...ERROR_CODES.VALIDATION_ERROR,
+      message: 'Biên lai tối đa 5MB.',
+    };
+  }
+
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.writeFileSync(targetPath, buffer);
+  return `/payment-proofs/${finalName}`;
+}
+
+function submitPaymentProof(orderId, userId, { fileName, dataUrl, note = '' }) {
+  const db = getDatabase();
+  ensureOrderPaymentFields(db);
+
+  const order = db.prepare('SELECT * FROM orders WHERE id = ? AND user_id = ?').get(orderId, userId);
+  if (!order) {
+    throw ERROR_CODES.ORDER_NOT_FOUND;
+  }
+  if (order.payment_method !== 'TRANSFER') {
+    throw {
+      ...ERROR_CODES.VALIDATION_ERROR,
+      message: 'Chỉ đơn chuyển khoản mới cần gửi biên lai.',
+    };
+  }
+  if (order.status === 'CANCELLED') {
+    throw {
+      ...ERROR_CODES.INVALID_STATUS_TRANSITION,
+      message: 'Đơn đã hủy không thể gửi biên lai.',
+    };
+  }
+
+  const proofUrl = savePaymentProofFile({ fileName, dataUrl, orderId });
+  db.prepare(`
+    UPDATE orders
+    SET payment_status = 'PENDING_REVIEW',
+        payment_proof_url = ?,
+        payment_note = ?,
+        payment_confirmed_at = NULL,
+        payment_confirmed_by = NULL,
+        updated_at = datetime('now', 'localtime')
+    WHERE id = ?
+  `).run(proofUrl, note || '', orderId);
+
+  logger.info('ORDER_PAYMENT_PROOF_SUBMITTED', { orderId, userId, proofUrl });
+  return getOrderById(orderId, userId);
+}
+
+module.exports = { createOrder, getOrderById, getUserOrders, submitPaymentProof };

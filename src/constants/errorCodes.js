@@ -132,7 +132,7 @@ const ERROR_CODES = {
 // ━━━ Allowed Status Transitions (State Machine) ━━━
 const VALID_STATUS_TRANSITIONS = {
   PENDING: ['APPROVED', 'CANCELLED'],
-  APPROVED: ['RENTING', 'CANCELLED'],
+  APPROVED: ['RENTING', 'COMPLETED', 'CANCELLED'],
   RENTING: ['COMPLETED'],
   COMPLETED: [],
   CANCELLED: [],

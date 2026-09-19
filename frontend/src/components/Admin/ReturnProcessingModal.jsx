@@ -64,6 +64,11 @@ const ReturnProcessingModal = ({ order, onClose, onSuccess }) => {
     : 0;
 
   const handleSubmit = async () => {
+    if (rentedItems.length === 0) {
+      setErrorMsg('Đơn hàng này không có sản phẩm thuê để xử lý cọc. Hãy hoàn tất đơn mua từ bảng quản lý đơn hàng.');
+      return;
+    }
+
     setSubmitting(true);
     setErrorMsg('');
     try {
@@ -140,6 +145,11 @@ const ReturnProcessingModal = ({ order, onClose, onSuccess }) => {
               Kiểm định tình trạng thiết bị
             </h4>
             <div className="space-y-3">
+              {rentedItems.length === 0 && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm font-semibold text-amber-200">
+                  Đơn hàng này là đơn mua, không có sản phẩm thuê để kiểm định/trả cọc.
+                </div>
+              )}
               {rentedItems.map(item => {
                 const cond = itemConditions[item.id] || {};
                 return (
@@ -257,7 +267,7 @@ const ReturnProcessingModal = ({ order, onClose, onSuccess }) => {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || rentedItems.length === 0}
             className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors shadow-lg shadow-emerald-500/20 disabled:opacity-50"
           >
             {submitting ? 'Đang xử lý...' : 'Xác Nhận Hoàn Tất Thuê'}

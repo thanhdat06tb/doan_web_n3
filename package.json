@@ -7,6 +7,7 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "db:init": "node src/database/init.js",
+    "db:sync-media": "node scripts/sync-demo-media.js",
     "test": "jest --verbose"
   },
   "keywords": ["rental", "ecommerce", "sqlite"],

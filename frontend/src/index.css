@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    overflow-x: clip;
+  }
+
   body {
     @apply bg-slate-950 text-slate-100 min-h-screen antialiased;
     /* Dark mesh surface for a softer modern look */
@@ -12,6 +16,7 @@
       radial-gradient(at 80% 0%, rgba(245, 158, 11, 0.12) 0px, transparent 34%),
       radial-gradient(at 65% 70%, rgba(16, 185, 129, 0.10) 0px, transparent 36%);
     background-attachment: fixed;
+    overflow-x: clip;
   }
 
   img {
@@ -20,6 +25,17 @@
 }
 
 @layer components {
+  .site-nav > a,
+  .site-nav > .group > button {
+    min-width: clamp(112px, 8vw, 130px);
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  .site-nav {
+    container-type: inline-size;
+  }
+
   .bg-white,
   .bg-slate-50,
   .bg-gray-50,
@@ -79,6 +95,32 @@
   opacity: 1;
 }
 
+.hero-cutout {
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 48%, rgba(0, 0, 0, 0.94) 58%, transparent 82%);
+  mask-image: radial-gradient(ellipse at center, #000 48%, rgba(0, 0, 0, 0.94) 58%, transparent 82%);
+}
+
+.hero-product-image {
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 58%, rgba(0, 0, 0, 0.98) 72%, transparent 96%);
+  mask-image: radial-gradient(ellipse at center, #000 58%, rgba(0, 0, 0, 0.98) 72%, transparent 96%);
+}
+
+.hero-slide-copy {
+  animation: hero-copy-in 680ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes hero-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .product-calendar .rdp-root,
 .product-calendar .rdp {
   --rdp-accent-color: #1d4ed8;
@@ -110,4 +152,62 @@
 .product-calendar .rdp-range_start,
 .product-calendar .rdp-range_end {
   color: #ffffff !important;
+}
+
+.product-detail-theme .bg-white {
+  background-color: rgba(255, 255, 255, 0.94) !important;
+}
+
+.product-detail-theme .bg-slate-50,
+.product-detail-theme .bg-slate-100,
+.product-detail-theme .bg-blue-50 {
+  background-color: #fff1d6 !important;
+}
+
+.product-detail-theme .border-slate-200,
+.product-detail-theme .border-blue-100,
+.product-detail-theme .border-blue-200 {
+  border-color: #f3c17a !important;
+}
+
+.product-detail-theme .text-blue-700,
+.product-detail-theme .text-blue-600 {
+  color: #0f766e !important;
+}
+
+.product-detail-theme .text-blue-950,
+.product-detail-theme .text-slate-950,
+.product-detail-theme .text-slate-900,
+.product-detail-theme .text-slate-800 {
+  color: #07111f !important;
+}
+
+.product-detail-theme .text-slate-700,
+.product-detail-theme .text-slate-600,
+.product-detail-theme .text-slate-500 {
+  color: #4b3f39 !important;
+}
+
+.product-detail-theme .bg-blue-600,
+.product-detail-theme .bg-blue-700 {
+  background-color: #083344 !important;
+}
+
+.product-detail-theme .hover\:bg-blue-700:hover,
+.product-detail-theme .hover\:bg-blue-50:hover {
+  background-color: #7f1d1d !important;
+  color: #ffffff !important;
+}
+
+.product-detail-theme .rounded-xl {
+  border-radius: 1.5rem !important;
+}
+
+.product-detail-theme .shadow-sm {
+  box-shadow: 0 18px 40px rgba(126, 50, 13, 0.10) !important;
+}
+
+.product-detail-theme .product-calendar .rdp {
+  --rdp-accent-color: #0f766e;
+  --rdp-accent-background-color: #ccfbf1;
 }

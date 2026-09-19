@@ -13,6 +13,7 @@ const path = require('path');
 const fs = require('fs');
 
 const { getDatabase, closeDatabase } = require('./database/connection');
+const { ensureOrderPaymentFields } = require('./database/migrations');
 const { errorResponse } = require('./utils/responseHelper');
 const logger = require('./utils/logger');
 
@@ -77,6 +78,7 @@ try {
     console.log('⚠️  Database chưa được khởi tạo. Chạy: npm run db:init');
     console.log('   Hoặc chạy: node src/database/init.js');
   } else {
+    ensureOrderPaymentFields(db);
     console.log('✅ Database đã sẵn sàng');
   }
 } catch (error) {

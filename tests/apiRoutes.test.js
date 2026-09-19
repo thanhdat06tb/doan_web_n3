@@ -33,6 +33,17 @@ async function request(pathname, options = {}) {
   return { status: response.status, body };
 }
 
+async function rawRequest(pathname, options = {}) {
+  const response = await fetch(`${baseUrl}${pathname}`, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+    },
+  });
+  const text = await response.text();
+  return { status: response.status, text, headers: response.headers };
+}
+
 async function login(email, password = 'password123') {
   const response = await request('/api/auth/login', {
     method: 'POST',
@@ -254,6 +265,187 @@ test('admin product API lists, updates and deactivates products', async () => {
   expect(detail.body.data.is_active).toBe(0);
 });
 
+test('admin product API stores editable product gallery images', async () => {
+  const token = await login('admin@example.com');
+
+  const update = await request('/api/admin/products/1', {
+    method: 'PUT',
+    headers: authHeader(token),
+    body: JSON.stringify({
+      category_id: 1,
+      name: 'Gallery product',
+      description: 'Updated gallery',
+      price_sell: 2100000,
+      price_rent_per_day: 0,
+      deposit_amount: 0,
+      stock_quantity: 4,
+      image_url: '/images/primary.png',
+      images: ['/images/primary.png', '/images/angle.png', '/images/color.png', '/images/angle.png'],
+    }),
+  });
+  expect(update.status).toBe(200);
+
+  const detail = await request('/api/admin/products/1', {
+    headers: authHeader(token),
+  });
+
+  expect(detail.body.data.image_url).toBe('/images/primary.png');
+  expect(detail.body.data.images.map((image) => image.image_url)).toEqual([
+    '/images/primary.png',
+    '/images/angle.png',
+    '/images/color.png',
+  ]);
+  expect(detail.body.data.images[0].is_primary).toBe(1);
+});
+
+test('admin orders API filters by created date and returns daily summary', async () => {
+  const db = getDatabase();
+  const token = await login('admin@example.com');
+
+  db.prepare(`
+    INSERT INTO orders (
+      id, user_id, total_amount, total_deposit, grand_total,
+      status, payment_method, shipping_name, shipping_phone, shipping_address, created_at
+    )
+    VALUES
+      (30, 1, 200000, 50000, 250000, 'PENDING', 'TRANSFER', 'Customer One', '0900000001', 'Addr', '2026-09-16 08:10:00'),
+      (31, 1, 300000, 0, 300000, 'COMPLETED', 'CASH', 'Customer Two', '0900000002', 'Addr', '2026-09-16 14:30:00'),
+      (32, 1, 400000, 100000, 500000, 'APPROVED', 'TRANSFER', 'Customer Three', '0900000003', 'Addr', '2026-09-17 09:00:00')
+  `).run();
+
+  db.prepare(`
+    INSERT INTO order_details (
+      order_id, product_id, type, quantity, unit_price,
+      start_date, end_date, total_days, subtotal, deposit_amount
+    )
+    VALUES
+      (30, 1, 'BUY', 1, 200000, NULL, NULL, 0, 200000, 0),
+      (31, 2, 'RENT', 1, 300000, '2026-09-18', '2026-09-18', 1, 300000, 0),
+      (32, 2, 'RENT', 1, 400000, '2026-09-19', '2026-09-19', 1, 400000, 100000)
+  `).run();
+
+  const response = await request('/api/admin/orders?date=2026-09-16&limit=20', {
+    headers: authHeader(token),
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.body.data.items.map((order) => order.id)).toEqual([31, 30]);
+  expect(response.body.data.summary.selectedDate).toBe('2026-09-16');
+  expect(response.body.data.summary.orderCount).toBe(2);
+  expect(response.body.data.summary.grandTotal).toBe(550000);
+  expect(response.body.data.summary.statusCounts.PENDING).toBe(1);
+  expect(response.body.data.summary.statusCounts.COMPLETED).toBe(1);
+});
+
+test('admin orders API treats empty date query as no date filter', async () => {
+  const db = getDatabase();
+  const token = await login('admin@example.com');
+
+  db.prepare(`
+    INSERT INTO orders (
+      id, user_id, total_amount, total_deposit, grand_total,
+      status, payment_method, shipping_name, shipping_phone, shipping_address, created_at
+    )
+    VALUES
+      (35, 1, 200000, 0, 200000, 'PENDING', 'CASH', 'Customer One', '0900000001', 'Addr', '2026-09-16 08:10:00'),
+      (36, 1, 300000, 0, 300000, 'COMPLETED', 'CASH', 'Customer Two', '0900000002', 'Addr', '2026-09-17 14:30:00')
+  `).run();
+
+  const response = await request('/api/admin/orders?date=&limit=100', {
+    headers: authHeader(token),
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.body.data.items.map((order) => order.id)).toEqual(expect.arrayContaining([35, 36]));
+  expect(response.body.data.summary.selectedDate).toBeNull();
+});
+
+test('admin export API returns analysis-ready order item CSV', async () => {
+  const db = getDatabase();
+  const token = await login('admin@example.com');
+
+  db.prepare(`
+    INSERT INTO orders (
+      id, user_id, total_amount, total_deposit, grand_total,
+      status, payment_method, payment_status, shipping_name, shipping_phone, shipping_address, created_at
+    )
+    VALUES (40, 1, 400000, 100000, 500000, 'COMPLETED', 'TRANSFER', 'PAID', 'Customer One', '0900000001', 'Addr', '2026-09-16 08:10:00')
+  `).run();
+
+  db.prepare(`
+    INSERT INTO order_details (
+      order_id, product_id, type, quantity, unit_price,
+      start_date, end_date, total_days, subtotal, deposit_amount
+    )
+    VALUES (40, 2, 'RENT', 2, 200000, '2026-09-18', '2026-09-19', 2, 800000, 100000)
+  `).run();
+
+  const response = await rawRequest('/api/admin/export/order-items.csv?from=2026-09-16&to=2026-09-16', {
+    headers: authHeader(token),
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.headers.get('content-type')).toContain('text/csv');
+  expect(response.text).toContain('sep=;');
+  expect(response.text).toContain('order_id;order_date');
+  expect(response.text).toContain('rental_unit_days');
+  expect(response.text).toContain('Customer One');
+  expect(response.text).toContain('Máy quay test');
+
+  const reportPath = response.headers.get('x-report-path');
+  expect(reportPath).toMatch(/^reports[\\/].+\.csv$/);
+  expect(fs.existsSync(path.resolve(__dirname, '..', reportPath))).toBe(true);
+});
+
+test('customer submits transfer proof and admin reviews payment', async () => {
+  const customerToken = await login('customer@example.com');
+  const adminToken = await login('admin@example.com');
+  const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+
+  const orderResponse = await request('/api/orders', {
+    method: 'POST',
+    headers: authHeader(customerToken),
+    body: JSON.stringify({
+      cartItems: [{ productId: 1, quantity: 1, type: 'BUY' }],
+      shippingName: 'Customer One',
+      shippingPhone: '0900000001',
+      shippingAddress: 'Test address',
+      paymentMethod: 'TRANSFER',
+    }),
+  });
+
+  expect(orderResponse.status).toBe(201);
+  const orderId = orderResponse.body.data.orderId;
+
+  const proofResponse = await request(`/api/orders/${orderId}/payment-proof`, {
+    method: 'POST',
+    headers: authHeader(customerToken),
+    body: JSON.stringify({
+      fileName: 'proof.png',
+      dataUrl: tinyPng,
+      note: 'Da chuyen khoan',
+    }),
+  });
+
+  expect(proofResponse.status).toBe(200);
+  expect(proofResponse.body.data.payment_status).toBe('PENDING_REVIEW');
+  expect(proofResponse.body.data.payment_proof_url).toContain('/payment-proofs/');
+
+  const reviewResponse = await request(`/api/admin/orders/${orderId}/payment`, {
+    method: 'PUT',
+    headers: authHeader(adminToken),
+    body: JSON.stringify({
+      paymentStatus: 'PAID',
+      note: 'Da doi soat',
+    }),
+  });
+
+  expect(reviewResponse.status).toBe(200);
+  expect(reviewResponse.body.data.payment_status).toBe('PAID');
+  expect(reviewResponse.body.data.payment_note).toBe('Da doi soat');
+  expect(reviewResponse.body.data.payment_confirmed_at).toEqual(expect.any(String));
+});
+
 test('admin dashboard overdue API returns renting orders past end date', async () => {
   const db = getDatabase();
   const token = await login('admin@example.com');
@@ -283,6 +475,79 @@ test('admin dashboard overdue API returns renting orders past end date', async (
   expect(response.status).toBe(200);
   expect(response.body.data[0].orderId).toBe(12);
   expect(response.body.data[0].overdueDays).toBeGreaterThan(0);
+});
+
+test('admin dashboard analytics API returns chart-ready metrics', async () => {
+  const db = getDatabase();
+  const token = await login('admin@example.com');
+  const today = new Date().toISOString().slice(0, 10);
+
+  db.prepare(`
+    INSERT INTO orders (
+      id, user_id, total_amount, total_deposit, grand_total,
+      status, payment_method, shipping_name, shipping_phone, shipping_address, created_at
+    )
+    VALUES (30, 1, 2600000, 500000, 3100000, 'COMPLETED', 'CASH', 'Customer One', '0900000001', 'Addr', ?)
+  `).run(`${today} 09:30:00`);
+
+  db.prepare(`
+    INSERT INTO order_details (
+      order_id, product_id, type, quantity, unit_price,
+      start_date, end_date, total_days, subtotal, deposit_amount
+    )
+    VALUES
+      (30, 1, 'BUY', 1, 2000000, NULL, NULL, 0, 2000000, 0),
+      (30, 2, 'RENT', 1, 200000, ?, ?, 3, 600000, 500000)
+  `).run(today, dateAfter(2));
+
+  const response = await request('/api/admin/dashboard/analytics?period=30d&status=COMPLETED&categoryId=ALL', {
+    headers: authHeader(token),
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.body.success).toBe(true);
+  expect(response.body.data.categories.length).toBeGreaterThan(0);
+  expect(response.body.data.revenueByCategory[0].totalRevenue).toBe(2600000);
+  expect(response.body.data.dailyRevenue.some((row) => row.date === today && row.totalRevenue === 2600000)).toBe(true);
+  expect(response.body.data.transactionMix.map((row) => row.type).sort()).toEqual(['BUY', 'RENT']);
+  expect(response.body.data.topRentalDays[0].rentalUnitDays).toBe(3);
+});
+
+test('admin status API completes buy-only orders without sending them to renting', async () => {
+  const db = getDatabase();
+  const token = await login('admin@example.com');
+
+  db.prepare(`
+    INSERT INTO orders (
+      id, user_id, total_amount, total_deposit, grand_total,
+      status, payment_method, shipping_name, shipping_phone, shipping_address
+    )
+    VALUES (20, 1, 2000000, 0, 2000000, 'APPROVED', 'CASH', 'Customer One', '0900000001', 'Addr')
+  `).run();
+
+  db.prepare(`
+    INSERT INTO order_details (
+      order_id, product_id, type, quantity, unit_price,
+      start_date, end_date, total_days, subtotal, deposit_amount
+    )
+    VALUES (20, 1, 'BUY', 1, 2000000, NULL, NULL, 0, 2000000, 0)
+  `).run();
+
+  const invalidRenting = await request('/api/admin/orders/20/status', {
+    method: 'PUT',
+    headers: authHeader(token),
+    body: JSON.stringify({ status: 'RENTING' }),
+  });
+  expect(invalidRenting.status).toBe(400);
+  expect(invalidRenting.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+
+  const complete = await request('/api/admin/orders/20/status', {
+    method: 'PUT',
+    headers: authHeader(token),
+    body: JSON.stringify({ status: 'COMPLETED' }),
+  });
+  expect(complete.status).toBe(200);
+  expect(complete.body.data.status).toBe('COMPLETED');
 });
 
 test('availability API blocks fully booked overlapping range and allows next day', async () => {

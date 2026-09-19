@@ -4,6 +4,7 @@ const path = require('path');
 
 const { getDatabase, closeDatabase } = require('../src/database/connection');
 const { createOrder } = require('../src/services/orderService');
+const { updateOrderStatus } = require('../src/services/adminService');
 const { checkProductAvailability } = require('../src/services/availabilityService');
 const { calculateDays } = require('../src/utils/dateUtils');
 
@@ -91,6 +92,73 @@ test('createOrder calculates buy, rent, deposit and grand total from DB prices',
   expect(order.totalAmount).toBe(3200000);
   expect(order.totalDeposit).toBe(1000000);
   expect(order.grandTotal).toBe(4200000);
+});
+
+test('createOrder merges duplicate buy items and deducts stock once', () => {
+  const db = getDatabase();
+
+  createOrder(
+    1,
+    [
+      { productId: 1, type: 'BUY', quantity: 2 },
+      { productId: 1, type: 'BUY', quantity: 2 },
+    ],
+    {
+      shippingName: 'Nguyen Van A',
+      shippingPhone: '0900000001',
+      shippingAddress: '123 Test Street',
+      paymentMethod: 'CASH',
+    }
+  );
+
+  const product = db.prepare('SELECT stock_quantity FROM products WHERE id = 1').get();
+  const details = db.prepare('SELECT quantity FROM order_details WHERE product_id = 1 AND type = ?').all('BUY');
+
+  expect(product.stock_quantity).toBe(1);
+  expect(details).toHaveLength(1);
+  expect(details[0].quantity).toBe(4);
+});
+
+test('cancelling a buy order restores deducted stock', () => {
+  const db = getDatabase();
+
+  const order = createOrder(
+    1,
+    [{ productId: 1, type: 'BUY', quantity: 3 }],
+    {
+      shippingName: 'Nguyen Van A',
+      shippingPhone: '0900000001',
+      shippingAddress: '123 Test Street',
+      paymentMethod: 'CASH',
+    }
+  );
+
+  expect(db.prepare('SELECT stock_quantity FROM products WHERE id = 1').get().stock_quantity).toBe(2);
+
+  updateOrderStatus(order.orderId, 'CANCELLED', 2);
+
+  expect(db.prepare('SELECT stock_quantity FROM products WHERE id = 1').get().stock_quantity).toBe(5);
+});
+
+test('pending rental orders reserve availability before admin approval', () => {
+  const startDate = dateAfter(10);
+  const endDate = dateAfter(12);
+
+  createOrder(
+    1,
+    [{ productId: 3, type: 'RENT', quantity: 1, startDate, endDate }],
+    {
+      shippingName: 'Nguyen Van A',
+      shippingPhone: '0900000001',
+      shippingAddress: '123 Test Street',
+      paymentMethod: 'CASH',
+    }
+  );
+
+  const result = checkProductAvailability(3, startDate, endDate, 1);
+
+  expect(result.available).toBe(false);
+  expect(result.conflictDates).toContain(startDate);
 });
 
 test('availability blocks an overlapping rental when stock is exhausted', () => {

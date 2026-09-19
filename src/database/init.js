@@ -9,6 +9,8 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { getDatabase, closeDatabase } = require('./connection');
+const { ensureOrderPaymentFields } = require('./migrations');
+const { syncDemoMedia } = require('./syncDemoMedia');
 
 function initDatabase() {
   console.log('🚀 Bắt đầu khởi tạo database...\n');
@@ -20,6 +22,7 @@ function initDatabase() {
     const schemaPath = path.resolve(__dirname, '../../database/schema.sql');
     const schemaSql = fs.readFileSync(schemaPath, 'utf-8');
     db.exec(schemaSql);
+    ensureOrderPaymentFields(db);
     console.log('✅ Đã tạo xong các bảng (schema.sql)');
 
     // ━━━ Bước 2: Tạo indexes ━━━
@@ -39,6 +42,9 @@ function initDatabase() {
     } else {
       console.log('⏭️  Bỏ qua seed — database đã có dữ liệu');
     }
+
+    syncDemoMedia(db);
+    console.log('✅ Đã đồng bộ ảnh demo cho sản phẩm');
 
     // ━━━ Thống kê ━━━
     console.log('\n📊 Thống kê database:');

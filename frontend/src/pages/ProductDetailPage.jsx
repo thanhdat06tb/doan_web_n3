@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import ImageGallery from '../components/Product/ImageGallery';
 import LiveConfigurator from '../components/Product/LiveConfigurator';
@@ -47,8 +47,8 @@ const ProductDetailPage = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const productId = parseInt(id, 10) || 1; 
-    
+    const productId = parseInt(id, 10) || 1;
+
     const fetchProduct = async () => {
       setLoading(true);
       setError(null);
@@ -59,10 +59,10 @@ const ProductDetailPage = () => {
         } else {
           throw new Error('API Error');
         }
-      } catch (error) {
+      } catch (err) {
         if (import.meta.env.VITE_ENABLE_MOCKS === 'true') {
-          console.warn("Backend not available, using mock data", error.message);
-          const foundProduct = mockProducts.find(p => p.id === productId) || mockProducts[0];
+          console.warn('Backend not available, using mock data', err.message);
+          const foundProduct = mockProducts.find((item) => item.id === productId) || mockProducts[0];
           setProduct(foundProduct);
         } else {
           setProduct(null);
@@ -78,20 +78,22 @@ const ProductDetailPage = () => {
 
   if (loading) {
     return (
-      <div className="container mx-auto grid max-w-6xl gap-8 px-4 py-10 lg:grid-cols-[1.3fr_0.9fr]">
-        <div className="space-y-4">
-          <div className="aspect-[4/3] animate-pulse rounded-2xl bg-slate-200" />
-          <div className="h-7 w-56 animate-pulse rounded bg-slate-200" />
-          <div className="h-20 animate-pulse rounded bg-slate-100" />
+      <div className="min-h-screen bg-[#fff6e7] px-4 py-10">
+        <div className="container mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.3fr_0.9fr]">
+          <div className="space-y-4">
+            <div className="aspect-[4/3] animate-pulse rounded-2xl bg-[#ffe7bd]" />
+            <div className="h-7 w-56 animate-pulse rounded bg-[#ffe7bd]" />
+            <div className="h-20 animate-pulse rounded bg-white/70" />
+          </div>
+          <div className="h-[520px] animate-pulse rounded-2xl bg-white/80" />
         </div>
-        <div className="h-[520px] animate-pulse rounded-2xl bg-slate-100" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center px-4 text-center" role="alert">
+      <div className="flex min-h-[60vh] items-center justify-center bg-[#fff6e7] px-4 text-center" role="alert">
         <div className="max-w-md rounded-2xl border border-rose-200 bg-rose-50 p-6">
           <h1 className="text-xl font-black text-rose-700">Không tải được sản phẩm</h1>
           <p className="mt-2 text-sm leading-6 text-rose-600">{error}</p>
@@ -102,37 +104,50 @@ const ProductDetailPage = () => {
 
   if (!product) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center px-4 text-center">
-        <div className="max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h1 className="text-xl font-black text-slate-900">Không tìm thấy sản phẩm</h1>
-          <p className="mt-2 text-sm text-slate-500">Sản phẩm có thể đã ngừng kinh doanh hoặc đường dẫn không đúng.</p>
+      <div className="flex min-h-[60vh] items-center justify-center bg-[#fff6e7] px-4 text-center">
+        <div className="max-w-md rounded-2xl border border-[#f3c17a] bg-white p-6 shadow-sm">
+          <h1 className="text-xl font-black text-[#07111f]">Không tìm thấy sản phẩm</h1>
+          <p className="mt-2 text-sm text-[#4b3f39]">Sản phẩm có thể đã ngừng kinh doanh hoặc đường dẫn không đúng.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto max-w-6xl px-4 py-8">
-      <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
-        {/* Cột trái 60%: Gallery ảnh */}
-        <div className="w-full lg:w-3/5">
-          <ImageGallery
-            images={getProductGalleryImages(product)}
-            availableQty={product.availableQtyToday ?? product.stock_quantity}
-          />
-          
-          <div className="mt-10">
-            <h2 className="mb-4 text-2xl font-bold">Thông tin sản phẩm</h2>
-            <div className="prose max-w-none text-slate-300">
-              <p>{product.description || 'Sản phẩm chưa có mô tả chi tiết.'}</p>
+    <div className="product-detail-theme min-h-screen bg-[#fff6e7] text-[#07111f]">
+      <section className="relative overflow-hidden border-b-4 border-[#f97316] bg-[#fff1d6] px-4 py-10">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_12%,rgba(255,255,255,0.9),transparent_24%),radial-gradient(circle_at_82%_20%,rgba(249,115,22,0.32),transparent_30%),radial-gradient(circle_at_90%_72%,rgba(15,118,110,0.16),transparent_26%)]" />
+        <div className="absolute right-6 top-4 hidden text-[7rem] font-black italic leading-none text-[#9a3412]/10 md:block">
+          GearRental
+        </div>
+        <div className="relative mx-auto max-w-6xl">
+          <p className="mb-3 inline-flex rounded-full bg-[#ffcc32] px-5 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#07111f]">
+            {product.category_name || 'Thiết bị'}
+          </p>
+          <h1 className="max-w-3xl text-3xl font-black leading-tight tracking-tight md:text-5xl">{product.name}</h1>
+        </div>
+      </section>
+
+      <div className="container mx-auto max-w-6xl px-4 py-10">
+        <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
+          <div className="w-full lg:w-3/5">
+            <ImageGallery
+              images={getProductGalleryImages(product)}
+              availableQty={product.availableQtyToday ?? product.stock_quantity}
+            />
+
+            <div className="mt-10 rounded-2xl border border-[#f3c17a] bg-white/82 p-7 shadow-[0_18px_40px_rgba(126,50,13,0.10)]">
+              <h2 className="mb-4 text-2xl font-black text-[#07111f]">Thông tin sản phẩm</h2>
+              <div className="prose max-w-none text-[#3f3128]">
+                <p>{product.description || 'Sản phẩm chưa có mô tả chi tiết.'}</p>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Cột phải 40%: Configurator */}
-        <div className="w-full lg:w-2/5">
-          <div className="sticky top-8">
-            <LiveConfigurator product={product} />
+          <div className="w-full lg:w-2/5">
+            <div className="sticky top-28">
+              <LiveConfigurator product={product} />
+            </div>
           </div>
         </div>
       </div>

@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 const { getDatabase } = require('../database/connection');
+const { ensureOrderPaymentFields } = require('../database/migrations');
 const { ERROR_CODES, VALID_STATUS_TRANSITIONS } = require('../constants/errorCodes');
 const logger = require('../utils/logger');
 const fs = require('fs');
@@ -24,6 +25,7 @@ function ensureAdminTables(db) {
 function getDashboardSummary() {
   const db = getDatabase();
   ensureAdminTables(db);
+  ensureOrderPaymentFields(db);
 
   // Revenue stats
   const sellRev = db.prepare(`
@@ -98,6 +100,17 @@ function getDashboardSummary() {
     ordersCountMap[row.status] = row.count;
   });
 
+  const paymentRows = db.prepare(`
+    SELECT payment_status, COUNT(*) as count
+    FROM orders
+    WHERE payment_method = 'TRANSFER'
+    GROUP BY payment_status
+  `).all();
+  const paymentsCountMap = { UNPAID: 0, PENDING_REVIEW: 0, PAID: 0, REJECTED: 0 };
+  paymentRows.forEach(row => {
+    paymentsCountMap[row.payment_status] = row.count;
+  });
+
   // Top rented products
   const topRentedProducts = db.prepare(`
     SELECT p.id as productId, p.name, COALESCE(SUM(od.quantity), 0) as totalRentals,
@@ -125,6 +138,7 @@ function getDashboardSummary() {
       riskAmount,
     },
     orders: ordersCountMap,
+    payments: paymentsCountMap,
     topRentedProducts,
   };
 }
@@ -228,11 +242,178 @@ function getOverdueRentalOrders({ limit = 10 } = {}) {
   `).all(todayStr, todayStr, limit);
 }
 
+function getLowStockProducts({ limit = 10, threshold = 3 } = {}) {
+  const db = getDatabase();
+
+  return db.prepare(`
+    SELECT
+      p.id AS productId,
+      p.name,
+      p.stock_quantity AS stockQuantity,
+      p.price_sell AS priceSell,
+      p.price_rent_per_day AS priceRentPerDay,
+      c.name AS categoryName
+    FROM products p
+    LEFT JOIN categories c ON c.id = p.category_id
+    WHERE p.is_active = 1
+      AND p.stock_quantity <= ?
+    ORDER BY p.stock_quantity ASC, p.id DESC
+    LIMIT ?
+  `).all(threshold, limit);
+}
+
+function getDashboardAnalytics({ period = '30d', categoryId = 'ALL', status = 'ALL' } = {}) {
+  const db = getDatabase();
+  ensureOrderPaymentFields(db);
+
+  const periodDays = period === '7d' ? 7 : period === '12m' ? 365 : 30;
+  const hasCategoryFilter = categoryId && categoryId !== 'ALL';
+  const conditions = [`date(o.created_at) >= date('now', 'localtime', '-' || ? || ' days')`];
+  const params = [periodDays - 1];
+
+  if (status && status !== 'ALL') {
+    conditions.push('o.status = ?');
+    params.push(status);
+  }
+
+  if (hasCategoryFilter) {
+    conditions.push('p.category_id = ?');
+    params.push(Number(categoryId));
+  }
+
+  const whereClause = conditions.join(' AND ');
+
+  const categories = db.prepare(`
+    SELECT id, name
+    FROM categories
+    ORDER BY name ASC
+  `).all();
+
+  const revenueByCategory = db.prepare(`
+    SELECT
+      c.id AS categoryId,
+      c.name AS categoryName,
+      COALESCE(SUM(CASE WHEN od.type = 'BUY' THEN od.subtotal ELSE 0 END), 0) AS buyRevenue,
+      COALESCE(SUM(CASE WHEN od.type = 'RENT' THEN od.subtotal ELSE 0 END), 0) AS rentRevenue,
+      COALESCE(SUM(od.subtotal), 0) AS totalRevenue
+    FROM order_details od
+    JOIN orders o ON o.id = od.order_id
+    JOIN products p ON p.id = od.product_id
+    LEFT JOIN categories c ON c.id = p.category_id
+    WHERE ${whereClause}
+    GROUP BY c.id, c.name
+    ORDER BY totalRevenue DESC
+  `).all(...params);
+
+  const dailyRows = db.prepare(`
+    WITH RECURSIVE dates(date) AS (
+      VALUES(date('now', 'localtime', '-' || ? || ' days'))
+      UNION ALL
+      SELECT date(date, '+1 day')
+      FROM dates
+      WHERE date < date('now', 'localtime')
+    )
+    SELECT
+      d.date AS date,
+      COALESCE(SUM(CASE WHEN od.type = 'BUY' ${hasCategoryFilter ? 'AND p.id IS NOT NULL' : ''} THEN od.subtotal ELSE 0 END), 0) AS buyRevenue,
+      COALESCE(SUM(CASE WHEN od.type = 'RENT' ${hasCategoryFilter ? 'AND p.id IS NOT NULL' : ''} THEN od.subtotal ELSE 0 END), 0) AS rentRevenue,
+      COALESCE(SUM(CASE WHEN ${hasCategoryFilter ? 'p.id IS NOT NULL' : 'od.id IS NOT NULL'} THEN od.subtotal ELSE 0 END), 0) AS totalRevenue
+    FROM dates d
+    LEFT JOIN orders o ON date(o.created_at) = d.date
+      ${status && status !== 'ALL' ? 'AND o.status = ?' : ''}
+    LEFT JOIN order_details od ON od.order_id = o.id
+    LEFT JOIN products p ON p.id = od.product_id
+      ${hasCategoryFilter ? 'AND p.category_id = ?' : ''}
+    GROUP BY d.date
+    ORDER BY d.date ASC
+  `).all(
+    periodDays - 1,
+    ...(status && status !== 'ALL' ? [status] : []),
+    ...(hasCategoryFilter ? [Number(categoryId)] : [])
+  );
+
+  const transactionMixRows = db.prepare(`
+    SELECT
+      od.type AS type,
+      COUNT(*) AS lineCount,
+      COALESCE(SUM(od.quantity), 0) AS quantity,
+      COALESCE(SUM(od.subtotal), 0) AS revenue
+    FROM order_details od
+    JOIN orders o ON o.id = od.order_id
+    JOIN products p ON p.id = od.product_id
+    WHERE ${whereClause}
+    GROUP BY od.type
+    ORDER BY revenue DESC
+  `).all(...params);
+
+  const topRentalDays = db.prepare(`
+    SELECT
+      p.id AS productId,
+      p.name AS productName,
+      c.name AS categoryName,
+      COALESCE(SUM(od.quantity * od.total_days), 0) AS rentalUnitDays,
+      COALESCE(SUM(od.quantity), 0) AS rentedQuantity,
+      COALESCE(SUM(od.subtotal), 0) AS rentRevenue
+    FROM order_details od
+    JOIN orders o ON o.id = od.order_id
+    JOIN products p ON p.id = od.product_id
+    LEFT JOIN categories c ON c.id = p.category_id
+    WHERE ${whereClause}
+      AND od.type = 'RENT'
+    GROUP BY p.id, p.name, c.name
+    ORDER BY rentalUnitDays DESC, rentRevenue DESC
+    LIMIT 10
+  `).all(...params);
+
+  return {
+    filters: {
+      period,
+      periodDays,
+      categoryId: categoryId || 'ALL',
+      status: status || 'ALL',
+    },
+    categories,
+    revenueByCategory,
+    dailyRevenue: dailyRows.map((row) => ({
+      ...row,
+      label: row.date.slice(5),
+    })),
+    transactionMix: transactionMixRows,
+    topRentalDays,
+  };
+}
+
+function normalizeProductImages(primaryImage, images = []) {
+  const candidates = [primaryImage, ...(Array.isArray(images) ? images : [])]
+    .map((image) => String(image || '').trim())
+    .filter(Boolean);
+
+  return [...new Set(candidates)].slice(0, 8);
+}
+
+function replaceProductImages(db, productId, primaryImage, images = []) {
+  const normalizedImages = normalizeProductImages(primaryImage, images);
+
+  db.prepare('DELETE FROM product_images WHERE product_id = ?').run(productId);
+
+  const insertImage = db.prepare(`
+    INSERT INTO product_images (product_id, image_url, is_primary, sort_order)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  normalizedImages.forEach((imageUrl, index) => {
+    insertImage.run(productId, imageUrl, index === 0 ? 1 : 0, index);
+  });
+
+  return normalizedImages;
+}
+
 /**
  * 4. Lấy danh sách đơn hàng cho Admin
  */
-function getAdminOrders({ status, search, page = 1, limit = 10 }) {
+function getAdminOrders({ status, search, date = '', page = 1, limit = 10 }) {
   const db = getDatabase();
+  ensureOrderPaymentFields(db);
   const offset = (page - 1) * limit;
 
   let query = `
@@ -248,6 +429,11 @@ function getAdminOrders({ status, search, page = 1, limit = 10 }) {
     params.push(status);
   }
 
+  if (date) {
+    query += ` AND date(o.created_at) = ?`;
+    params.push(date);
+  }
+
   if (search) {
     query += ` AND (o.id LIKE ? OR o.shipping_name LIKE ? OR o.shipping_phone LIKE ?)`;
     const searchPattern = `%${search}%`;
@@ -257,6 +443,26 @@ function getAdminOrders({ status, search, page = 1, limit = 10 }) {
   // Count total matching
   const countQuery = query.replace('SELECT o.*, u.full_name as user_name, u.email as user_email', 'SELECT COUNT(*) as count');
   const total = db.prepare(countQuery).get(...params).count;
+
+  const summaryQuery = query.replace(
+    'SELECT o.*, u.full_name as user_name, u.email as user_email',
+    `SELECT
+      COUNT(*) as orderCount,
+      COALESCE(SUM(o.total_amount), 0) as totalAmount,
+      COALESCE(SUM(o.total_deposit), 0) as totalDeposit,
+      COALESCE(SUM(o.grand_total), 0) as grandTotal`
+  );
+  const statusQuery = query.replace(
+    'SELECT o.*, u.full_name as user_name, u.email as user_email',
+    'SELECT o.status, COUNT(*) as count'
+  ) + ' GROUP BY o.status';
+  const summary = db.prepare(summaryQuery).get(...params);
+  const statusRows = db.prepare(statusQuery).all(...params);
+  summary.statusCounts = { PENDING: 0, APPROVED: 0, RENTING: 0, COMPLETED: 0, CANCELLED: 0 };
+  statusRows.forEach((row) => {
+    summary.statusCounts[row.status] = row.count;
+  });
+  summary.selectedDate = date || null;
 
   query += ` ORDER BY o.created_at DESC LIMIT ? OFFSET ?`;
   params.push(limit, offset);
@@ -287,6 +493,7 @@ function getAdminOrders({ status, search, page = 1, limit = 10 }) {
       total,
       totalPages: Math.ceil(total / limit),
     },
+    summary,
   };
 }
 
@@ -295,6 +502,7 @@ function getAdminOrders({ status, search, page = 1, limit = 10 }) {
  */
 function getAdminOrderDetail(orderId) {
   const db = getDatabase();
+  ensureOrderPaymentFields(db);
   const order = db.prepare(`
     SELECT o.*, u.full_name as user_name, u.email as user_email
     FROM orders o
@@ -330,6 +538,7 @@ function getAdminOrderDetail(orderId) {
 function updateOrderStatus(orderId, newStatus, adminId) {
   const db = getDatabase();
   ensureAdminTables(db);
+  ensureOrderPaymentFields(db);
 
   // FIX Race Condition: Bọc trong transaction để đảm bảo atomic read-then-write
   const doUpdate = db.transaction(() => {
@@ -346,11 +555,44 @@ function updateOrderStatus(orderId, newStatus, adminId) {
       };
     }
 
+    const itemTypes = db.prepare(`
+      SELECT type, COUNT(*) as count
+      FROM order_details
+      WHERE order_id = ?
+      GROUP BY type
+    `).all(orderId);
+    const hasRentItems = itemTypes.some((item) => item.type === 'RENT' && item.count > 0);
+
+    if (newStatus === 'RENTING' && !hasRentItems) {
+      throw {
+        ...ERROR_CODES.INVALID_STATUS_TRANSITION,
+        message: 'Don mua khong co san pham thue, vui long chuyen thang sang Hoan thanh.',
+      };
+    }
+
     db.prepare(`
       UPDATE orders
       SET status = ?
       WHERE id = ?
     `).run(newStatus, orderId);
+
+    if (newStatus === 'CANCELLED' && order.status !== 'CANCELLED') {
+      const buyItems = db.prepare(`
+        SELECT product_id, quantity
+        FROM order_details
+        WHERE order_id = ? AND type = 'BUY'
+      `).all(orderId);
+
+      const restoreStock = db.prepare(`
+        UPDATE products
+        SET stock_quantity = stock_quantity + ?, updated_at = datetime('now', 'localtime')
+        WHERE id = ?
+      `);
+
+      for (const item of buyItems) {
+        restoreStock.run(item.quantity, item.product_id);
+      }
+    }
 
     // Audit log
     db.prepare(`
@@ -372,6 +614,7 @@ function updateOrderStatus(orderId, newStatus, adminId) {
 function completeOrderAndProcessDeposit(orderId, { itemConditions = [], returnDate, returnNote = '' }, adminId) {
   const db = getDatabase();
   ensureAdminTables(db);
+  ensureOrderPaymentFields(db);
 
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
   if (!order) {
@@ -498,6 +741,317 @@ function completeOrderAndProcessDeposit(orderId, { itemConditions = [], returnDa
   };
 }
 
+function reviewOrderPayment(orderId, { paymentStatus, note = '' }, adminId) {
+  const db = getDatabase();
+  ensureAdminTables(db);
+  ensureOrderPaymentFields(db);
+
+  const order = db.prepare('SELECT id, payment_method, payment_status FROM orders WHERE id = ?').get(orderId);
+  if (!order) {
+    throw { ...ERROR_CODES.ORDER_NOT_FOUND };
+  }
+  if (order.payment_method !== 'TRANSFER') {
+    throw {
+      ...ERROR_CODES.VALIDATION_ERROR,
+      message: 'Chỉ đơn chuyển khoản mới cần đối soát thanh toán.',
+    };
+  }
+
+  const allowed = ['PAID', 'REJECTED', 'PENDING_REVIEW'];
+  if (!allowed.includes(paymentStatus)) {
+    throw {
+      ...ERROR_CODES.VALIDATION_ERROR,
+      message: 'Trạng thái thanh toán không hợp lệ.',
+    };
+  }
+
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE orders
+      SET payment_status = ?,
+          payment_note = ?,
+          payment_confirmed_at = CASE WHEN ? IN ('PAID', 'REJECTED') THEN datetime('now', 'localtime') ELSE NULL END,
+          payment_confirmed_by = CASE WHEN ? IN ('PAID', 'REJECTED') THEN ? ELSE NULL END,
+          updated_at = datetime('now', 'localtime')
+      WHERE id = ?
+    `).run(paymentStatus, note || '', paymentStatus, paymentStatus, adminId, orderId);
+
+    db.prepare(`
+      INSERT INTO audit_logs (admin_id, action, target_table, target_id, old_value, new_value)
+      VALUES (?, 'REVIEW_ORDER_PAYMENT', 'orders', ?, ?, ?)
+    `).run(adminId, orderId, order.payment_status, paymentStatus);
+  })();
+
+  logger.info('ADMIN_REVIEW_ORDER_PAYMENT', { adminId, orderId, oldStatus: order.payment_status, paymentStatus });
+  return getAdminOrderDetail(orderId);
+}
+
+function csvEscape(value, delimiter = ';') {
+  if (value === null || value === undefined) return '';
+  const text = String(value).replace(/\r?\n|\r/g, ' ').trim();
+  if (text.includes('"') || text.includes(delimiter) || /[\r\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function toCsv(rows, columns) {
+  const delimiter = ';';
+  const header = columns.map((column) => csvEscape(column.label, delimiter)).join(delimiter);
+  const body = rows.map((row) => columns.map((column) => csvEscape(row[column.key], delimiter)).join(delimiter));
+  return `\uFEFFsep=${delimiter}\r\n${[header, ...body].join('\r\n')}`;
+}
+
+function timestampForFilename(date = new Date()) {
+  return date
+    .toISOString()
+    .replace(/[:T]/g, '-')
+    .replace(/\.\d{3}Z$/, '');
+}
+
+function saveReportFile(filename, content) {
+  const reportsDir = path.resolve(__dirname, '../../reports');
+  const extension = path.extname(filename) || '.csv';
+  const baseName = path.basename(filename, extension);
+  const savedFilename = `${baseName}-${timestampForFilename()}${extension}`;
+  const savedPath = path.join(reportsDir, savedFilename);
+
+  fs.mkdirSync(reportsDir, { recursive: true });
+  fs.writeFileSync(savedPath, content, 'utf8');
+
+  return {
+    savedFilename,
+    savedPath,
+    relativePath: path.join('reports', savedFilename),
+  };
+}
+
+function buildExportFilters({ from = '', to = '', status = 'ALL' } = {}) {
+  const orderConditions = ['1=1'];
+  const orderParams = [];
+  const detailConditions = ['1=1'];
+  const detailParams = [];
+
+  if (status && status !== 'ALL') {
+    orderConditions.push('o.status = ?');
+    orderParams.push(status);
+    detailConditions.push('o.status = ?');
+    detailParams.push(status);
+  }
+
+  if (from) {
+    orderConditions.push('date(o.created_at) >= ?');
+    orderParams.push(from);
+    detailConditions.push('date(o.created_at) >= ?');
+    detailParams.push(from);
+  }
+
+  if (to) {
+    orderConditions.push('date(o.created_at) <= ?');
+    orderParams.push(to);
+    detailConditions.push('date(o.created_at) <= ?');
+    detailParams.push(to);
+  }
+
+  return {
+    orderWhere: orderConditions.join(' AND '),
+    orderParams,
+    detailWhere: detailConditions.join(' AND '),
+    detailParams,
+  };
+}
+
+function getOrderItemsExportRows(filters = {}) {
+  const db = getDatabase();
+  ensureOrderPaymentFields(db);
+  const { detailWhere, detailParams } = buildExportFilters(filters);
+
+  return db.prepare(`
+    SELECT
+      o.id AS order_id,
+      date(o.created_at) AS order_date,
+      time(o.created_at) AS order_time,
+      o.created_at AS order_created_at,
+      o.status AS order_status,
+      o.payment_method,
+      o.payment_status,
+      o.payment_confirmed_at,
+      o.total_amount AS order_total_amount,
+      o.total_deposit AS order_total_deposit,
+      o.grand_total AS order_grand_total,
+      o.return_date AS order_return_date,
+      o.shipping_name AS customer_name,
+      o.shipping_phone AS customer_phone,
+      o.shipping_address AS customer_address,
+      u.email AS customer_email,
+      u.role AS customer_role,
+      od.id AS order_detail_id,
+      od.type AS item_type,
+      od.quantity,
+      od.unit_price,
+      od.start_date,
+      od.end_date,
+      od.total_days,
+      CASE WHEN od.type = 'RENT' THEN od.quantity * od.total_days ELSE 0 END AS rental_unit_days,
+      od.subtotal,
+      od.deposit_amount AS item_deposit_amount,
+      p.id AS product_id,
+      p.name AS product_name,
+      c.name AS category_name,
+      p.price_sell AS current_price_sell,
+      p.price_rent_per_day AS current_price_rent_per_day,
+      p.deposit_amount AS current_deposit_amount,
+      p.stock_quantity AS current_stock_quantity,
+      COALESCE(dt.condition, '') AS return_condition,
+      COALESCE(dt.deduct_amount, 0) AS return_deduct_amount,
+      COALESCE(dt.refund_amount, 0) AS return_refund_amount,
+      COALESCE(dt.late_fee, 0) AS return_late_fee,
+      COALESCE(dt.created_at, '') AS return_processed_at
+    FROM order_details od
+    JOIN orders o ON o.id = od.order_id
+    JOIN users u ON u.id = o.user_id
+    JOIN products p ON p.id = od.product_id
+    LEFT JOIN categories c ON c.id = p.category_id
+    LEFT JOIN deposit_transactions dt ON dt.order_detail_id = od.id
+    WHERE ${detailWhere}
+    ORDER BY o.created_at DESC, o.id DESC, od.id ASC
+  `).all(...detailParams);
+}
+
+function getOrdersExportRows(filters = {}) {
+  const db = getDatabase();
+  ensureOrderPaymentFields(db);
+  const { orderWhere, orderParams } = buildExportFilters(filters);
+
+  return db.prepare(`
+    SELECT
+      o.id AS order_id,
+      date(o.created_at) AS order_date,
+      time(o.created_at) AS order_time,
+      o.created_at AS order_created_at,
+      o.status AS order_status,
+      o.payment_method,
+      o.payment_status,
+      o.payment_confirmed_at,
+      o.total_amount,
+      o.total_deposit,
+      o.grand_total,
+      o.return_date,
+      o.shipping_name AS customer_name,
+      o.shipping_phone AS customer_phone,
+      o.shipping_address AS customer_address,
+      u.email AS customer_email,
+      COUNT(od.id) AS item_count,
+      SUM(CASE WHEN od.type = 'BUY' THEN od.quantity ELSE 0 END) AS buy_quantity,
+      SUM(CASE WHEN od.type = 'RENT' THEN od.quantity ELSE 0 END) AS rent_quantity,
+      SUM(CASE WHEN od.type = 'RENT' THEN od.quantity * od.total_days ELSE 0 END) AS rental_unit_days,
+      GROUP_CONCAT(p.name, ' | ') AS product_names
+    FROM orders o
+    JOIN users u ON u.id = o.user_id
+    LEFT JOIN order_details od ON od.order_id = o.id
+    LEFT JOIN products p ON p.id = od.product_id
+    WHERE ${orderWhere}
+    GROUP BY o.id
+    ORDER BY o.created_at DESC, o.id DESC
+  `).all(...orderParams);
+}
+
+function getProductPerformanceExportRows(filters = {}) {
+  const db = getDatabase();
+  ensureOrderPaymentFields(db);
+  const { detailWhere, detailParams } = buildExportFilters(filters);
+
+  return db.prepare(`
+    SELECT
+      p.id AS product_id,
+      p.name AS product_name,
+      c.name AS category_name,
+      p.price_sell,
+      p.price_rent_per_day,
+      p.deposit_amount,
+      p.stock_quantity,
+      p.is_active,
+      COUNT(DISTINCT o.id) AS order_count,
+      SUM(CASE WHEN od.type = 'BUY' THEN od.quantity ELSE 0 END) AS sold_quantity,
+      SUM(CASE WHEN od.type = 'RENT' THEN od.quantity ELSE 0 END) AS rented_quantity,
+      SUM(CASE WHEN od.type = 'RENT' THEN od.quantity * od.total_days ELSE 0 END) AS rental_unit_days,
+      SUM(CASE WHEN od.type = 'BUY' THEN od.subtotal ELSE 0 END) AS buy_revenue,
+      SUM(CASE WHEN od.type = 'RENT' THEN od.subtotal ELSE 0 END) AS rent_revenue,
+      SUM(od.subtotal) AS total_item_revenue,
+      SUM(od.deposit_amount) AS total_deposit_collected,
+      AVG(CASE WHEN od.type = 'RENT' THEN od.total_days ELSE NULL END) AS avg_rental_days,
+      SUM(CASE WHEN o.status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed_line_count,
+      SUM(CASE WHEN o.status = 'CANCELLED' THEN 1 ELSE 0 END) AS cancelled_line_count
+    FROM order_details od
+    JOIN orders o ON o.id = od.order_id
+    JOIN products p ON p.id = od.product_id
+    LEFT JOIN categories c ON c.id = p.category_id
+    WHERE ${detailWhere}
+    GROUP BY p.id
+    ORDER BY total_item_revenue DESC, rental_unit_days DESC, p.id DESC
+  `).all(...detailParams);
+}
+
+function exportAdminDataset(type, filters = {}) {
+  const datasets = {
+    'order-items': {
+      filename: 'gear-rental-order-items.csv',
+      rows: getOrderItemsExportRows(filters),
+      columns: [
+        'order_id', 'order_date', 'order_time', 'order_created_at', 'order_status',
+        'payment_method', 'payment_status', 'payment_confirmed_at',
+        'customer_name', 'customer_phone', 'customer_email', 'customer_address',
+        'order_detail_id', 'item_type', 'product_id', 'product_name', 'category_name',
+        'quantity', 'unit_price', 'start_date', 'end_date', 'total_days', 'rental_unit_days', 'subtotal',
+        'item_deposit_amount', 'order_total_amount', 'order_total_deposit', 'order_grand_total',
+        'current_price_sell', 'current_price_rent_per_day', 'current_deposit_amount',
+        'current_stock_quantity', 'return_condition', 'return_deduct_amount',
+        'return_refund_amount', 'return_late_fee', 'return_processed_at',
+      ].map((key) => ({ key, label: key })),
+    },
+    orders: {
+      filename: 'gear-rental-orders.csv',
+      rows: getOrdersExportRows(filters),
+      columns: [
+        'order_id', 'order_date', 'order_time', 'order_created_at', 'order_status',
+        'payment_method', 'payment_status', 'payment_confirmed_at',
+        'customer_name', 'customer_phone', 'customer_email', 'customer_address',
+        'item_count', 'buy_quantity', 'rent_quantity', 'rental_unit_days',
+        'total_amount', 'total_deposit', 'grand_total', 'return_date', 'product_names',
+      ].map((key) => ({ key, label: key })),
+    },
+    'product-performance': {
+      filename: 'gear-rental-product-performance.csv',
+      rows: getProductPerformanceExportRows(filters),
+      columns: [
+        'product_id', 'product_name', 'category_name', 'price_sell', 'price_rent_per_day',
+        'deposit_amount', 'stock_quantity', 'is_active', 'order_count', 'sold_quantity',
+        'rented_quantity', 'rental_unit_days', 'buy_revenue', 'rent_revenue',
+        'total_item_revenue', 'total_deposit_collected', 'avg_rental_days',
+        'completed_line_count', 'cancelled_line_count',
+      ].map((key) => ({ key, label: key })),
+    },
+  };
+
+  const dataset = datasets[type];
+  if (!dataset) {
+    throw {
+      ...ERROR_CODES.VALIDATION_ERROR,
+      message: 'Loai du lieu xuat file khong hop le.',
+    };
+  }
+
+  const content = toCsv(dataset.rows, dataset.columns);
+  const reportFile = saveReportFile(dataset.filename, content);
+
+  return {
+    filename: dataset.filename,
+    content,
+    rowCount: dataset.rows.length,
+    reportFile,
+  };
+}
+
 /**
  * 8. Thêm sản phẩm mới (Admin)
  */
@@ -509,33 +1063,35 @@ function createProduct(productData, adminId) {
     category_id, name, description = '',
     price_sell = 0, price_rent_per_day = 0,
     deposit_amount = 0, stock_quantity = 0,
-    image_url = ''
+    image_url = '', images = []
   } = productData;
+  const galleryImages = normalizeProductImages(image_url, images);
+  const primaryImageUrl = galleryImages[0] || image_url;
 
-  const result = db.prepare(`
-    INSERT INTO products (
+  const transaction = db.transaction(() => {
+    const result = db.prepare(`
+      INSERT INTO products (
+        category_id, name, description, price_sell, price_rent_per_day,
+        deposit_amount, stock_quantity, image_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
       category_id, name, description, price_sell, price_rent_per_day,
-      deposit_amount, stock_quantity, image_url
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    category_id, name, description, price_sell, price_rent_per_day,
-    deposit_amount, stock_quantity, image_url
-  );
+      deposit_amount, stock_quantity, primaryImageUrl
+    );
 
-  const newProductId = result.lastInsertRowid;
+    const newProductId = result.lastInsertRowid;
 
-  if (image_url) {
+    replaceProductImages(db, newProductId, primaryImageUrl, galleryImages);
+
     db.prepare(`
-      INSERT INTO product_images (product_id, image_url, is_primary, sort_order)
-      VALUES (?, ?, 1, 0)
-    `).run(newProductId, image_url);
-  }
+      INSERT INTO audit_logs (admin_id, action, target_table, target_id, new_value)
+      VALUES (?, 'CREATE_PRODUCT', 'products', ?, ?)
+    `).run(adminId, newProductId, JSON.stringify({ ...productData, image_url: primaryImageUrl, images: galleryImages }));
 
-  // Audit log
-  db.prepare(`
-    INSERT INTO audit_logs (admin_id, action, target_table, target_id, new_value)
-    VALUES (?, 'CREATE_PRODUCT', 'products', ?, ?)
-  `).run(adminId, newProductId, JSON.stringify(productData));
+    return newProductId;
+  });
+
+  const newProductId = transaction();
 
   logger.info('ADMIN_CREATE_PRODUCT', { adminId, productId: newProductId });
 
@@ -649,6 +1205,8 @@ function updateProduct(productId, productData, adminId) {
     stock_quantity: productData.stock_quantity || 0,
     image_url: productData.image_url || '',
   };
+  const galleryImages = normalizeProductImages(next.image_url, productData.images);
+  next.image_url = galleryImages[0] || next.image_url;
 
   const transaction = db.transaction(() => {
     db.prepare(`
@@ -666,22 +1224,12 @@ function updateProduct(productId, productData, adminId) {
       WHERE id = @id
     `).run({ id: productId, ...next });
 
-    db.prepare(`
-      DELETE FROM product_images
-      WHERE product_id = ? AND is_primary = 1
-    `).run(productId);
-
-    if (next.image_url) {
-      db.prepare(`
-        INSERT INTO product_images (product_id, image_url, is_primary, sort_order)
-        VALUES (?, ?, 1, 0)
-      `).run(productId, next.image_url);
-    }
+    replaceProductImages(db, productId, next.image_url, galleryImages);
 
     db.prepare(`
       INSERT INTO audit_logs (admin_id, action, target_table, target_id, old_value, new_value)
       VALUES (?, 'UPDATE_PRODUCT', 'products', ?, ?, ?)
-    `).run(adminId, productId, JSON.stringify(current), JSON.stringify(next));
+    `).run(adminId, productId, JSON.stringify(current), JSON.stringify({ ...next, images: galleryImages }));
   });
 
   transaction();
@@ -767,11 +1315,15 @@ module.exports = {
   getDashboardSummary,
   getRevenueChartData,
   getProductUtilization,
+  getDashboardAnalytics,
   getOverdueRentalOrders,
+  getLowStockProducts,
   getAdminOrders,
   getAdminOrderDetail,
   updateOrderStatus,
   completeOrderAndProcessDeposit,
+  reviewOrderPayment,
+  exportAdminDataset,
   createProduct,
   getAdminProducts,
   getAdminProductDetail,

@@ -5,6 +5,8 @@ const api = axios.create({
   timeout: 10000,
 });
 
+let refreshPromise = null;
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -23,7 +25,15 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && refreshToken && !originalRequest._retry && !isAuthRoute) {
       originalRequest._retry = true;
       try {
-        const refreshResponse = await api.post('/auth/refresh', { refreshToken });
+        if (!refreshPromise) {
+          refreshPromise = api
+            .post('/auth/refresh', { refreshToken })
+            .finally(() => {
+              refreshPromise = null;
+            });
+        }
+
+        const refreshResponse = await refreshPromise;
         if (refreshResponse.data.success) {
           const { token, user } = refreshResponse.data.data;
           localStorage.setItem('token', token);

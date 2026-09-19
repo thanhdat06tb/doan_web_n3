@@ -16,6 +16,7 @@ frontend/dist/
 # Logs
 logs/
 *.log
+reports/*.csv
 
 # OS files
 .DS_Store

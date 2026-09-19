@@ -9,7 +9,7 @@ const express = require('express');
 const { z } = require('zod');
 const router = express.Router();
 
-const { createOrder, getOrderById, getUserOrders } = require('../services/orderService');
+const { createOrder, getOrderById, getUserOrders, submitPaymentProof } = require('../services/orderService');
 const { successResponse, errorResponse, paginatedResponse } = require('../utils/responseHelper');
 const { ERROR_CODES } = require('../constants/errorCodes');
 const { authenticate } = require('../middleware/authMiddleware');
@@ -49,6 +49,12 @@ const createOrderSchema = z.object({
 
 const orderIdSchema = z.object({
   orderId: z.string().regex(/^\d+$/, 'ID đơn hàng phải là số.').transform(Number),
+});
+
+const paymentProofSchema = z.object({
+  fileName: z.string().trim().min(1).max(180),
+  dataUrl: z.string().min(50, 'Biên lai không hợp lệ.').max(7_000_000, 'Biên lai tối đa khoảng 5MB.'),
+  note: z.string().max(500).optional().default(''),
 });
 
 const userIdSchema = z.object({
@@ -157,6 +163,24 @@ router.get(
       res.status(500).json(
         errorResponse(ERROR_CODES.INTERNAL_ERROR.code, ERROR_CODES.INTERNAL_ERROR.message)
       );
+    }
+  }
+);
+
+router.post(
+  '/:orderId/payment-proof',
+  authenticate,
+  validateRequest({ params: orderIdSchema, body: paymentProofSchema }),
+  (req, res) => {
+    try {
+      const order = submitPaymentProof(req.params.orderId, req.user.id, req.body);
+      res.json(successResponse(order, 'Đã gửi biên lai chuyển khoản. Admin sẽ đối soát và xác nhận.'));
+    } catch (error) {
+      if (error.code && error.status) {
+        return res.status(error.status).json(errorResponse(error.code, error.message, error.details));
+      }
+      logger.error('SUBMIT_PAYMENT_PROOF_ROUTE_ERROR', { error: error.message });
+      res.status(500).json(errorResponse(ERROR_CODES.INTERNAL_ERROR.code, ERROR_CODES.INTERNAL_ERROR.message));
     }
   }
 );

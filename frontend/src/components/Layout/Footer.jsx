@@ -1,69 +1,71 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { Mail, MapPin, Phone } from 'lucide-react';
 
 const Footer = () => {
   return (
-    <footer className="bg-slate-900 text-slate-300 pt-16 pb-8 mt-auto border-t border-slate-800">
-      <div className="container mx-auto px-4 max-w-6xl">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
-          <div className="md:col-span-1">
-            <Link to="/" className="flex items-center gap-2 mb-6">
-              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-lg">
+    <footer className="mt-auto border-t-4 border-[#f97316] bg-[#083344] px-5 py-14 text-white">
+      <div className="mx-auto max-w-7xl">
+        <div className="grid gap-10 md:grid-cols-[1.2fr_0.9fr_1fr_1fr]">
+          <div>
+            <Link to="/" className="mb-6 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#ffbd45] to-[#be123c] text-white font-black shadow-lg">
                 GR
               </div>
-              <span className="text-xl font-black tracking-tight text-white">
-                Gear<span className="text-blue-500">Rental</span>
-              </span>
+              <div>
+                <div className="text-xl font-black leading-tight">Cho thuê thiết bị</div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#ffbd45]">chuyên dụng</div>
+              </div>
             </Link>
-            <p className="text-sm text-slate-400 leading-relaxed mb-6">
-              Nền tảng cho thuê và mua bán thiết bị chuyên dụng hàng đầu. Cam kết chất lượng, bảo hiểm 100% cho mọi thiết bị.
+            <p className="max-w-sm text-sm font-semibold leading-7 text-white/72">
+              Nền tảng cho thuê và mua bán thiết bị chuyên dụng. Tập trung vào quy trình rõ ràng, giá minh bạch và trải nghiệm đặt hàng gọn nhẹ.
             </p>
           </div>
-          
+
           <div>
-            <h4 className="text-white font-semibold mb-6">Dịch vụ</h4>
-            <ul className="space-y-3 text-sm">
-              <li><Link to="/" className="hover:text-blue-400 transition-colors">Cho thuê thiết bị xây dựng</Link></li>
-              <li><Link to="/" className="hover:text-blue-400 transition-colors">Cho thuê thiết bị sự kiện</Link></li>
-              <li><Link to="/" className="hover:text-blue-400 transition-colors">Mua bán máy quay phim</Link></li>
-            </ul>
-          </div>
-          
-          <div>
-            <h4 className="text-white font-semibold mb-6">Hỗ trợ khách hàng</h4>
-            <ul className="space-y-3 text-sm">
-              <li><Link to="/" className="hover:text-blue-400 transition-colors">Chính sách bảo hành</Link></li>
-              <li><Link to="/" className="hover:text-blue-400 transition-colors">Chính sách bảo mật</Link></li>
-              <li><Link to="/" className="hover:text-blue-400 transition-colors">Câu hỏi thường gặp (FAQ)</Link></li>
-              <li><Link to="/" className="hover:text-blue-400 transition-colors">Hướng dẫn thanh toán</Link></li>
+            <h4 className="mb-5 text-sm font-black uppercase tracking-[0.16em] text-[#ffbd45]">Dịch vụ</h4>
+            <ul className="space-y-3 text-sm font-semibold text-white/78">
+              <li><Link to="/category/thiet-bi-xay-dung" className="transition hover:text-[#ffbd45]">Thiết bị xây dựng</Link></li>
+              <li><Link to="/category/quan-ao-bao-ho" className="transition hover:text-[#ffbd45]">Đồ bảo hộ</Link></li>
+              <li><Link to="/category/may-quay-phim" className="transition hover:text-[#ffbd45]">Thiết bị quay phim</Link></li>
             </ul>
           </div>
 
           <div>
-            <h4 className="text-white font-semibold mb-6">Liên hệ</h4>
-            <ul className="space-y-3 text-sm">
+            <h4 className="mb-5 text-sm font-black uppercase tracking-[0.16em] text-[#ffbd45]">Hỗ trợ khách hàng</h4>
+            <ul className="space-y-3 text-sm font-semibold text-white/78">
+              <li><Link to="/" className="transition hover:text-[#ffbd45]">Chính sách bảo hành</Link></li>
+              <li><Link to="/" className="transition hover:text-[#ffbd45]">Chính sách bảo mật</Link></li>
+              <li><Link to="/" className="transition hover:text-[#ffbd45]">Câu hỏi thường gặp</Link></li>
+              <li><Link to="/checkout" className="transition hover:text-[#ffbd45]">Thanh toán</Link></li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="mb-5 text-sm font-black uppercase tracking-[0.16em] text-[#ffbd45]">Liên hệ</h4>
+            <ul className="space-y-4 text-sm font-semibold text-white/78">
               <li className="flex items-start gap-3">
-                <span className="text-blue-500">📍</span>
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#ffbd45]" />
                 <span>Thụy Dũng, Đông Thụy Anh, Hưng Yên</span>
               </li>
               <li className="flex items-center gap-3">
-                <span className="text-blue-500">📞</span>
+                <Phone className="h-4 w-4 shrink-0 text-[#ffbd45]" />
                 <span>0369038160</span>
               </li>
               <li className="flex items-center gap-3">
-                <span className="text-blue-500">✉️</span>
+                <Mail className="h-4 w-4 shrink-0 text-[#ffbd45]" />
                 <span>thanhdat06tb@gmail.com</span>
               </li>
             </ul>
           </div>
         </div>
-        
-        <div className="border-t border-slate-800 pt-8 flex flex-col md:flex-row items-center justify-between text-sm text-slate-500">
+
+        <div className="mt-10 flex flex-col gap-4 border-t border-white/12 pt-6 text-sm font-semibold text-white/58 md:flex-row md:items-center md:justify-between">
           <p>© 2026 GearRental. All rights reserved.</p>
-          <div className="flex gap-4 mt-4 md:mt-0">
-            <Link to="/" className="hover:text-white transition-colors">Terms</Link>
-            <Link to="/" className="hover:text-white transition-colors">Privacy</Link>
-            <Link to="/" className="hover:text-white transition-colors">Cookies</Link>
+          <div className="flex gap-5">
+            <Link to="/" className="transition hover:text-white">Terms</Link>
+            <Link to="/" className="transition hover:text-white">Privacy</Link>
+            <Link to="/" className="transition hover:text-white">Cookies</Link>
           </div>
         </div>
       </div>
