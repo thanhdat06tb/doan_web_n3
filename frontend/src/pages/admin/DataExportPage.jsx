@@ -68,7 +68,8 @@ const DataExportPage = () => {
         responseType: 'blob',
       });
 
-      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const csvBytes = new Uint8Array([0xef, 0xbb, 0xbf]);
+      const blob = new Blob([csvBytes, response.data], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

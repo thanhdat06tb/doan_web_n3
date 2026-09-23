@@ -213,7 +213,7 @@ router.get('/export/:type.csv', validateRequest({ params: exportParamSchema, que
     if (reportFile?.relativePath) {
       res.setHeader('X-Report-Path', reportFile.relativePath);
     }
-    res.send(content);
+    res.send(Buffer.from(content, 'utf8'));
   } catch (error) {
     res.status(error.status || 500).json(
       errorResponse(error.code || 'INTERNAL_ERROR', error.message || 'Khong the xuat du lieu.')

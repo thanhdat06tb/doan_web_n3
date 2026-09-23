@@ -40,8 +40,9 @@ async function rawRequest(pathname, options = {}) {
       ...(options.headers || {}),
     },
   });
-  const text = await response.text();
-  return { status: response.status, text, headers: response.headers };
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const text = buffer.toString('utf8');
+  return { status: response.status, text, bytes: buffer, headers: response.headers };
 }
 
 async function login(email, password = 'password123') {
@@ -386,11 +387,15 @@ test('admin export API returns analysis-ready order item CSV', async () => {
 
   expect(response.status).toBe(200);
   expect(response.headers.get('content-type')).toContain('text/csv');
-  expect(response.text).toContain('sep=;');
-  expect(response.text).toContain('order_id;order_date');
-  expect(response.text).toContain('rental_unit_days');
-  expect(response.text).toContain('Customer One');
-  expect(response.text).toContain('Máy quay test');
+
+  expect(response.bytes.subarray(0, 3)).toEqual(Buffer.from([0xef, 0xbb, 0xbf]));
+
+  const csvText = response.text;
+  expect(csvText).toContain('sep=;');
+  expect(csvText).toContain('order_id;order_date');
+  expect(csvText).toContain('rental_unit_days');
+  expect(csvText).toContain('Customer One');
+  expect(csvText).toContain('Máy quay test');
 
   const reportPath = response.headers.get('x-report-path');
   expect(reportPath).toMatch(/^reports[\\/].+\.csv$/);

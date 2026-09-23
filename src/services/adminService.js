@@ -799,7 +799,8 @@ function toCsv(rows, columns) {
   const delimiter = ';';
   const header = columns.map((column) => csvEscape(column.label, delimiter)).join(delimiter);
   const body = rows.map((row) => columns.map((column) => csvEscape(row[column.key], delimiter)).join(delimiter));
-  return `\uFEFFsep=${delimiter}\r\n${[header, ...body].join('\r\n')}`;
+  const csvContent = `sep=${delimiter}\r\n${[header, ...body].join('\r\n')}`;
+  return `\uFEFF${csvContent}`;
 }
 
 function timestampForFilename(date = new Date()) {
@@ -817,7 +818,7 @@ function saveReportFile(filename, content) {
   const savedPath = path.join(reportsDir, savedFilename);
 
   fs.mkdirSync(reportsDir, { recursive: true });
-  fs.writeFileSync(savedPath, content, 'utf8');
+  fs.writeFileSync(savedPath, Buffer.from(content, 'utf8'));
 
   return {
     savedFilename,
